@@ -3,19 +3,19 @@ import json
 import time
 import datetime
 
+import settings as s
+
 __token=""
-__chat_id=""
 req_prefix="https://api.telegram.org/bot"
 
 request_idx=0
 
-def init(token,chat_id):
-    global __token,__chat_id
-    print("Posting to "+chat_id+", token len: "+str(len(token)))
+def init(token):
+    global __token
+    print("Token len: "+str(len(token)))
     __token=token
-    __chat_id=chat_id
 
-def send_text(text,preview=True,tries=3):
+def send_text(chat_id,text,preview=True,tries=3):
     forbidden=[ '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
     for ch in forbidden:
         text=text.replace(ch,"\\"+ch)
@@ -23,7 +23,7 @@ def send_text(text,preview=True,tries=3):
         disable_preview_text="False"#потому что дизейбл
     else:
         disable_preview_text="True"
-    data = {"chat_id": __chat_id, "text": text,"parse_mode":"MarkdownV2","disable_web_page_preview":disable_preview_text}
+    data = {"chat_id": chat_id, "text": text,"parse_mode":"MarkdownV2","disable_web_page_preview":disable_preview_text}
     url=req_prefix+__token+"/sendMessage"
     #print("url:"+url)
     #print("text:"+text)
@@ -33,7 +33,7 @@ def send_text(text,preview=True,tries=3):
         print("error with request (send_text). pause")
         time.sleep(10)
         if tries>0:
-            return send_text(text,preview,tries-1)
+            return send_text(chat_id,text,preview,tries-1)
         else:
             return []
     return res
@@ -81,19 +81,19 @@ def get_updates(id=0):
             tg_result=dict()
             update_id=-1
     else:
-        print(f"Request error! (no result) Wait 60 (idx:{request_idx})")
+        print(f"Request error! (no result) Wait {s.poll_error_pause} (idx:{request_idx})")
         if "error_code" in j:
             print(f"There is error_code:{j['error_code']}")
         else:
             print("No error_code present. See:"+str(j))
-        time.sleep(60)
+        time.sleep(s.poll_error_pause)
         tg_result=dict()
         update_id=-1
         return tg_result,update_id
     return tg_result,update_id
 
-def get_chat(tries=3):
-    data = {"chat_id": __chat_id}
+def get_chat(chat_id,tries=3):
+    data = {"chat_id": chat_id}
     url=req_prefix+__token+"/getChat"
     #print("url:"+url)
     #print("text:"+text)
@@ -101,15 +101,15 @@ def get_chat(tries=3):
         res=requests.post(url,data=data)
     except:
         print("error with request (get_chat). pause")
-        time.sleep(10)
+        time.sleep(s.poll_error_pause)
         if tries>0:
-            return get_chat(tries-1)
+            return get_chat(chat_id,tries-1)
         else:
             return []
     return res
 
-def restrict(uid,date,tries=3):
-    data = {"chat_id": __chat_id,"user_id":uid,"permissions":'{"can_send_messages":false}',"until_date":date}
+def restrict(chat_id,uid,date,tries=3):
+    data = {"chat_id": chat_id,"user_id":uid,"permissions":'{"can_send_messages":false}',"until_date":date}
     url=req_prefix+__token+"/restrictChatMember"
     #print("url:"+url)
     #print("text:"+text)
@@ -117,15 +117,15 @@ def restrict(uid,date,tries=3):
         res=requests.post(url,data=data)
     except:
         print("error with request (restrict). pause")
-        time.sleep(10)
+        time.sleep(s.poll_error_pause)
         if tries>0:
-            return restrict(uid,date,tries-1)
+            return restrict(chat_id,uid,date,tries-1)
         else:
             return []
     return res
 
-def delete_message(message_id,tries=3):
-    data = {"chat_id": __chat_id,"message_id":message_id}
+def delete_message(chat_id,message_id,tries=3):
+    data = {"chat_id": chat_id,"message_id":message_id}
     url=req_prefix+__token+"/deleteMessage"
     #print("url:"+url)
     #print("text:"+text)
@@ -133,92 +133,40 @@ def delete_message(message_id,tries=3):
         res=requests.post(url,data=data)
     except:
         print("error with request (deleteMessage). pause")
-        time.sleep(10)
+        time.sleep(s.poll_error_pause)
         if tries>0:
-            return restrict(message_id,tries-1)
+            return restrict(chat_id,message_id,tries-1)
         else:
             return []
     return res
 
 
 
-test_res={"update_id": 744449279,
- "chat_member":
-     {
-        "chat":
-             {
-                "id": -1001489654859, 
-                "title": "Астрономический чат «Ultima Thule»", 
-                "username": "astro_chat_ut", 
-                "type": "supergroup"
-            },
-         "from":
-             {
-                "id": 1738303190, 
-                "is_bot": False, 
-                "first_name": "Надя", 
-                "last_name": "Савельева", 
-                "is_premium": True
-            },
-         "date": 1744958312, 
-         "old_chat_member": 
-            {
-                "user": 
-                    {
-                        "id": 1738303190, 
-                        "is_bot": False, 
-                        "first_name": "Надя", 
-                        "last_name": "Савельева", 
-                        "is_premium": True
-                        },
-                 "status": "left"
-            },
-         "new_chat_member": 
-            {
-                "user": 
-                    {
-                        "id": 1738303190, 
-                        "is_bot": False,
-                         "first_name": "Надя", 
-                         "last_name": "Савельева", 
-                         "is_premium": True}, 
-                "status": "member"
-            },
-         "via_chat_folder_invite_link": True
-    }
-}
-
-
 if __name__=="__main__":
-    settings=open("settings.txt")
+    to_delete_chat_id=[]
     to_delete_id=[]
     to_delete_date=[]
-    token=settings.readline().strip()
-    chat_id=settings.readline().strip()
-    init(token,chat_id)
-    #res=send_text("test")
-    res=get_chat()
-    print(str(res)+"\n")
-    print(res.content.decode("unicode-escape"))
-    #res=restrict(310299961,1745314457+604800)#7 дней
-    #print(res.content.decode("unicode-escape"))
+    s.load()
+    init(s.token)
     id=-1
     sent_counter=3
     while(1):
         for i in range(len(to_delete_id)):
+            m_chat_id=to_delete_chat_id[i]
             m_id=to_delete_id[i]
             m_date=to_delete_date[i]
             dif=int(datetime.datetime.now().timestamp())-m_date
-            if dif>3600:#1 час
-                res=delete_message(m_id)
+            if dif>s.auto_delete_time:#1 час
+                res=delete_message(m_chat_id,m_id)
                 print(res.content.decode("unicode-escape"))
-                s=res.content.replace(b'\\"',b"*").decode("unicode-escape")
-                j=fix_JSON(s)
+                s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape")
+                j=fix_JSON(s_tmp)
                 if "ok" in j:
                     if j["ok"]==True:
                         print(f"message deleted. id={m_id},date={m_date}")
-                        to_delete_date.pop(i)
+                        to_delete_chat_id.pop(i)
                         to_delete_id.pop(i)
+                        to_delete_date.pop(i)
                         #мы не хотим проблем с изменённым в цикле списке, поэтому после изменения сразу прекращаем. следующее сообщение, если оно есть, удалим в следующий раз
                         break
                     else:
@@ -231,12 +179,20 @@ if __name__=="__main__":
         #if res.contents!=""
         if len(res)>0:
             date=1
+            chat_id=0
             if "message" in res:
                 date=res["message"]["date"]
+                chat_id=res["message"]["chat"]["id"]
+                if "text" in res["message"] and res["message"]["text"]=="test1147":
+                    send_text(chat_id,"response784")
+                    #send_text(chat_id,"\u0421\u0432\u0435\u0442\u043b\u0430\u043d\u0430 \u041c\u0438\u0449\u0435\u043d\u043a\u043e")
             if "message_reaction" in res:
                 date=res["message_reaction"]["date"]
+                chat_id=res["message_reaction"]["chat"]["id"]
             if "chat_member" in res:
                 date=res["chat_member"]["date"]
+                chat_id=res["chat_member"]["chat"]["id"]
+
             date_s=datetime.datetime.fromtimestamp(date).strftime("%B %d %Y, %H:%M:%S")#ftime.strftime("%B %d %Y", str(date))
             print(f"update_id={id}, {date_s}")
             t=open("messages_log.txt","a",encoding="utf-8",errors="replace")
@@ -246,6 +202,21 @@ if __name__=="__main__":
             t.write("\n")
             t.close()
             #res=test_res
+
+            if "message" in res and res["message"]["chat"]["type"]=="private":
+                #тут будет вся обработка лички
+                continue#дальнейшая обработка не имеет смысла
+
+            #остались группы и супергруппы (а может и ещё что, т.к. по документации это непонятно)
+            c_s=dict()
+            s.load_chat_settings(chat_id)
+            c_s=s.chats[chat_id]
+            if c_s["ignore"]==True:
+                print(f"ignoring message from chat {chat_id}")
+                time.sleep(s.poll_pause)
+                continue#чат не входит в число обслуживаемых. личка не считается
+
+
             if "chat_member" in res:
                 cm=res["chat_member"]
                 user=cm["new_chat_member"]["user"]
@@ -263,15 +234,19 @@ if __name__=="__main__":
                         name+=" "+user["last_name"]
                     if "username" in user:
                         name+=" ("+user["username"]+")"
+                    #name=name.encode("unicode-escape").decode()
                     if uid==uid_from:#настоящий вход
-                        message=name+", здравствуйте!\n\nИз-за атаки ботов всем новым пользователям отключена отправка сообщений на одну неделю.\n\nДля досрочного снятия блокировки пишите администраторам чата."
+                        message=c_s["MSG"]["hello"]
+                        message=message.replace("#N",name).replace("\\n","\n")
                         print(message)
-                        res=send_text(message)
+                        res=send_text(chat_id,message)
                         print(res.content.decode("unicode-escape"))
-                        s=res.content.replace(b'\\"',b"*").decode("unicode-escape")
-                        j=fix_JSON(s)
+                        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape")
+                        j=fix_JSON(s_tmp)
                         if "result" in j:
                             result=j["result"]
+                            to_delete_chat_id.append(chat_id)
+                            print(f"added to queue (chat_id):{chat_id}")
                             if "message_id" in result:
                                 to_delete_id.append(result["message_id"])
                                 print(f"added to queue:{result['message_id']}")
@@ -284,14 +259,15 @@ if __name__=="__main__":
                                 print("not found in result: date")
                         else:
                             print("not found in result: result")
-                        res=restrict(int(uid),int(date)+604800)#7 дней
+                        res=restrict(chat_id,int(uid),int(date)+c_s["mute_timer"])#7 дней
                         print(res.content.decode("unicode-escape"))
                     else:#разбан
                         if status=="member":
-                            message="Пользователь "+name+" разбанен вручную."
+                            message=c_s["MSG"]["unban"]
+                            message=message.replace("#N",name).replace("\\n","\n")
                             print(message)
-                            send_text(message)
+                            send_text(chat_id,message)
                         else:
                             pass#кого-то забанили или он получил новые ограничения. не будем выводить сообщений
 
-        time.sleep(15)
+        time.sleep(s.poll_pause)
