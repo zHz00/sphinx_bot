@@ -15,7 +15,7 @@ def init(token):
     print("Token len: "+str(len(token)))
     __token=token
 
-def send_text(chat_id,text,preview=True,tries=3):
+def send_text(chat_id,text,reply="",preview=True,tries=3):
     forbidden=[ '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
     for ch in forbidden:
         text=text.replace(ch,"\\"+ch)
@@ -24,6 +24,8 @@ def send_text(chat_id,text,preview=True,tries=3):
     else:
         disable_preview_text="True"
     data = {"chat_id": chat_id, "text": text,"parse_mode":"MarkdownV2","disable_web_page_preview":disable_preview_text}
+    if len(reply)>0:
+        data["reply_markup"]=reply
     url=req_prefix+__token+"/sendMessage"
     #print("url:"+url)
     #print("text:"+text)
@@ -33,7 +35,7 @@ def send_text(chat_id,text,preview=True,tries=3):
         print("error with request (send_text). pause")
         time.sleep(10)
         if tries>0:
-            return send_text(chat_id,text,preview,tries-1)
+            return send_text(chat_id,text,reply,preview,tries-1)
         else:
             return []
     return res
@@ -101,6 +103,20 @@ def get_chat(chat_id,tries=3):
         res=requests.post(url,data=data)
     except:
         print("error with request (get_chat). pause")
+        time.sleep(s.poll_error_pause)
+        if tries>0:
+            return get_chat(chat_id,tries-1)
+        else:
+            return []
+    return res
+
+def get_chat_member(chat_id,uid,tries=3):
+    data = {"chat_id": chat_id,"user_id":uid}
+    url=req_prefix+__token+"/getChatMember"
+    try:
+        res=requests.post(url,data=data)
+    except:
+        print("error with request (get_chat_member). pause")
         time.sleep(s.poll_error_pause)
         if tries>0:
             return get_chat(chat_id,tries-1)
@@ -204,7 +220,44 @@ if __name__=="__main__":
             #res=test_res
 
             if "message" in res and res["message"]["chat"]["type"]=="private":
+                if "text" not in res["message"]:
+                    continue
                 #тут будет вся обработка лички
+                if res["message"]["text"]=="/start":
+                    button1=s.messages["check_button"]
+                    button2=s.messages["unmute_button"]
+                    reply='{"keyboard":[[{"text":"'+button1+'"},{"text":"'+button2+'"}]],"resize_keyboard":true}'
+                    send_text(chat_id,s.messages["greeting"].replace("\\n","\n"),reply=reply)
+                if res["message"]["text"]==s.messages["check_button"]:
+                    text=s.messages["check"]+"\n"
+                    n=1
+                    for group_chat_id in s.chats.keys():
+                        res=get_chat(group_chat_id)
+                        print(res.content.decode("unicode-escape"))
+                        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape")
+                        j=fix_JSON(s_tmp)
+                        if "result" in j and "title" in j["result"]:
+                            title=j["result"]["title"]+f" ({group_chat_id})"
+                        else:
+                            title=f"<NO TITLE> ({group_chat_id})"
+                        res=get_chat_member(group_chat_id,chat_id)
+                        print(res.content.decode("unicode-escape"))
+                        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape")
+                        j=fix_JSON(s_tmp)
+                        if "result" in j and "status" in j["result"]:
+                            text+=f"{n}. "+title+"\n"
+                            text+=j["result"]["status"]+"\n"
+                            if j["result"]["status"]=="restricted":
+                                if s.chats[group_chat_id]["mute_timer"]==0:
+                                    text+=s.messages["mode_restricted_forever"]
+                                else:
+                                    text+=s.messages["mode_restricted"].replace("#D",s.chats[group_chat_id]["mute_timer"]/86400.0)
+                            else:
+                                text+=s.messages["mode_allowed"]
+                        text+="\n\n"
+                    send_text(chat_id,text)
+
+                
                 continue#дальнейшая обработка не имеет смысла
 
             #остались группы и супергруппы (а может и ещё что, т.к. по документации это непонятно)
