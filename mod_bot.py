@@ -2,6 +2,7 @@ import requests
 import json
 import time
 import datetime
+import random
 
 import settings as s
 
@@ -60,7 +61,7 @@ def fix_JSON(json_message=None):
 def get_updates(id=0):
     global request_idx
     request_idx+=1
-    data={"limit":1,"allowed_updates":'["message","message_reaction","chat_member"]'}
+    data={"limit":1,"allowed_updates":'["message","message_reaction","chat_member","callback_query"]'}
     if id!=0:
         data["offset"]=id
     url=req_prefix+__token+"/getUpdates"
@@ -140,6 +141,22 @@ def restrict(chat_id,uid,date,tries=3):
             return []
     return res
 
+def unrestrict(chat_id,uid,tries=3):
+    data = {"chat_id": chat_id,"user_id":uid,"permissions":'{"can_send_messages":true,"can_send_audios":true,"can_send_documents":true,"can_send_photos":true,"can_send_videos":true,"can_send_video_notes":true,"can_send_voice_notes":true,"can_send_polls":true,"can_send_other_messages":true,"can_add_web_page_previews":true,"can_change_info":true,"can_invite_users":true,"can_pin_messages":true,"can_manage_topics":true}',"until_date":date}
+    url=req_prefix+__token+"/restrictChatMember"
+    #print("url:"+url)
+    #print("text:"+text)
+    try:
+        res=requests.post(url,data=data)
+    except:
+        print("error with request (restrict). pause")
+        time.sleep(s.poll_error_pause)
+        if tries>0:
+            return restrict(chat_id,uid,date,tries-1)
+        else:
+            return []
+    return res
+
 def delete_message(chat_id,message_id,tries=3):
     data = {"chat_id": chat_id,"message_id":message_id}
     url=req_prefix+__token+"/deleteMessage"
@@ -156,12 +173,30 @@ def delete_message(chat_id,message_id,tries=3):
             return []
     return res
 
+def answer_callback(chat_id,callback_query_id,tries=3):
+    data = {"chat_id": chat_id,"callback_query_id":callback_query_id,"text":"OK!"}
+    url=req_prefix+__token+"/answerCallbackQuery"
+    #print("url:"+url)
+    #print("text:"+text)
+    try:
+        res=requests.post(url,data=data)
+    except:
+        print("error with request (answerCallbackQuery). pause")
+        time.sleep(s.poll_error_pause)
+        if tries>0:
+            return answer_callback(chat_id,callback_query_id,tries-1)
+        else:
+            return []
+    return res
 
 
 if __name__=="__main__":
     to_delete_chat_id=[]
     to_delete_id=[]
     to_delete_date=[]
+    active_q=dict()
+    active_q_group=dict()
+    q_id=0
     s.load()
     init(s.token)
     id=-1
@@ -208,6 +243,9 @@ if __name__=="__main__":
             if "chat_member" in res:
                 date=res["chat_member"]["date"]
                 chat_id=res["chat_member"]["chat"]["id"]
+            if "callback_query" in res:
+                date=0
+                chat_id=res["callback_query"]["from"]["id"]
 
             date_s=datetime.datetime.fromtimestamp(date).strftime("%B %d %Y, %H:%M:%S")#ftime.strftime("%B %d %Y", str(date))
             print(f"update_id={id}, {date_s}")
@@ -222,12 +260,25 @@ if __name__=="__main__":
             if "message" in res and res["message"]["chat"]["type"]=="private":
                 if "text" not in res["message"]:
                     continue
-                #тут будет вся обработка лички
+                if chat_id in active_q:#мы задали вопрос
+                    group_chat_id=active_q_group[chat_id]
+                    q_id=active_q[chat_id]
+                    active_q.pop(chat_id)
+                    active_q_group.pop(chat_id)
+                    answer=res["message"]["text"].replace("ё","е").replace("Ё","Е").lower()
+                    if s.chats[group_chat_id]["A"][q_id]==answer:
+                        send_text(chat_id,s.messages["unmute_success"])
+                        unrestrict(group_chat_id,chat_id)
+                    else:
+                        send_text(chat_id,s.messages["unmute_fail"])
+                    continue
+                #тут будет вся обработка лички (кроме коллбека)
                 if res["message"]["text"]=="/start":
                     button1=s.messages["check_button"]
                     button2=s.messages["unmute_button"]
                     reply='{"keyboard":[[{"text":"'+button1+'"},{"text":"'+button2+'"}]],"resize_keyboard":true}'
                     send_text(chat_id,s.messages["greeting"].replace("\\n","\n"),reply=reply)
+                    continue
                 if res["message"]["text"]==s.messages["check_button"]:
                     text=s.messages["check"]+"\n"
                     n=1
@@ -251,14 +302,56 @@ if __name__=="__main__":
                                 if s.chats[group_chat_id]["mute_timer"]==0:
                                     text+=s.messages["mode_restricted_forever"]
                                 else:
-                                    text+=s.messages["mode_restricted"].replace("#D",s.chats[group_chat_id]["mute_timer"]/86400.0)
+                                    text+=s.messages["mode_restricted"].replace("#D",str(s.chats[group_chat_id]["mute_timer"]/86400.0))
                             else:
                                 text+=s.messages["mode_allowed"]
                         text+="\n\n"
                     send_text(chat_id,text)
+                    continue
+                if res["message"]["text"]==s.messages["unmute_button"]:
+                    text=s.messages["unmute"]+"\n"
+                    buttons='{"inline_keyboard":[['
+                    n=1
+                    for group_chat_id in s.chats.keys():
+                        res=get_chat(group_chat_id)
+                        print(res.content.decode("unicode-escape"))
+                        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape")
+                        j=fix_JSON(s_tmp)
+                        if "result" in j and "title" in j["result"]:
+                            title=j["result"]["title"]+f" ({group_chat_id})"
+                        else:
+                            title=f"<NO TITLE> ({group_chat_id})"
+                        res=get_chat_member(group_chat_id,chat_id)
+                        print(res.content.decode("unicode-escape"))
+                        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape")
+                        j=fix_JSON(s_tmp)
+                        if "result" in j and "status" in j["result"]:
+                            buttons+='{"text":"'+title+'","callback_data":"'+str(group_chat_id)+'"},'
+                    if buttons[-1]==",":
+                        buttons=buttons[:-1]
+                    buttons+="]]}"
+                    send_text(chat_id,text,reply=buttons)
+                    continue
 
                 
                 continue#дальнейшая обработка не имеет смысла
+
+            if "callback_query" in res:
+                answer_callback(chat_id,res["callback_query"]["id"])
+                group_chat_id=int(res["callback_query"]["data"])
+                if group_chat_id not in s.chats:
+                    send_text(chat_id,"Chat NOT found")
+                    continue
+                q_id=random.randint(0,len(s.chats[group_chat_id]["Q"])-1)+1
+                if q_id not in s.chats[group_chat_id]["Q"]:
+                    print(f"key error! {q_id} question not found! check ini file!")
+                    continue
+                text=s.messages["unmute_question"]+"\n\n"
+                text+=s.chats[group_chat_id]["Q"][q_id]
+                active_q[chat_id]=q_id
+                active_q_group[chat_id]=group_chat_id
+                send_text(chat_id,text)
+                continue
 
             #остались группы и супергруппы (а может и ещё что, т.к. по документации это непонятно)
             c_s=dict()
@@ -268,7 +361,6 @@ if __name__=="__main__":
                 print(f"ignoring message from chat {chat_id}")
                 time.sleep(s.poll_pause)
                 continue#чат не входит в число обслуживаемых. личка не считается
-
 
             if "chat_member" in res:
                 cm=res["chat_member"]

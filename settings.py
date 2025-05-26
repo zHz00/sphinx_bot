@@ -55,6 +55,7 @@ def load_chat_settings(id):
     c=configparser.ConfigParser()
     c.read(filename,encoding="utf-8")
     if "COMMON" not in c:#файл отсутствует или битый. увы, функция не выбрасывает исключения...
+        print("creating new chat ini-file")
         if new_chats_allowed:
             shutil.copyfile(chats_folder+"default.ini",filename)
             c.read(filename,encoding="utf-8")
