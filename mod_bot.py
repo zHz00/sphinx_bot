@@ -73,8 +73,8 @@ def get_updates(id=0):
         tg_result=dict()
         update_id=-1
         return tg_result,update_id
-    s=res.content.replace(b'\\"',b"*").decode("unicode-escape")
-    j=fix_JSON(s)
+    s_res=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
+    j=fix_JSON(s_res)
     if "result" in j:
         if len(j["result"])>0:
             tg_result=j["result"][0]
@@ -84,12 +84,17 @@ def get_updates(id=0):
             tg_result=dict()
             update_id=-1
     else:
-        print(f"Request error! (no result) Wait {s.poll_error_pause} (idx:{request_idx})")
+        error_pause=s.poll_error_pause
+        if "parameters" in j:
+            if "retry_after" in j["paramters"]:
+                error_pause=j["parameters"]["retry_after"]
+                print(f"returned sleep:{error_pause}")
+        print(f"Request error! (no result) Wait {error_pause} (idx:{request_idx})")
         if "error_code" in j:
             print(f"There is error_code:{j['error_code']}")
         else:
             print("No error_code present. See:"+str(j))
-        time.sleep(s.poll_error_pause)
+        time.sleep(error_pause)
         tg_result=dict()
         update_id=-1
         return tg_result,update_id
@@ -209,8 +214,8 @@ if __name__=="__main__":
             dif=int(datetime.datetime.now().timestamp())-m_date
             if dif>s.auto_delete_time:#1 час
                 res=delete_message(m_chat_id,m_id)
-                print(res.content.decode("unicode-escape"))
-                s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape")
+                print(res.content.decode("unicode-escape",errors='replace'))
+                s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
                 j=fix_JSON(s_tmp)
                 if "ok" in j:
                     if j["ok"]==True:
@@ -266,11 +271,12 @@ if __name__=="__main__":
                     active_q.pop(chat_id)
                     active_q_group.pop(chat_id)
                     answer=res["message"]["text"].replace("ё","е").replace("Ё","Е").lower()
-                    if s.chats[group_chat_id]["A"][q_id]==answer:
+                    if answer in s.chats[group_chat_id]["A"][q_id]:
                         send_text(chat_id,s.messages["unmute_success"])
                         unrestrict(group_chat_id,chat_id)
                     else:
-                        send_text(chat_id,s.messages["unmute_fail"])
+                        keyboard='{"inline_keyboard":[[{"text":"'+s.messages["again"]+'","callback_data":"'+str(group_chat_id)+'|another"}]]}'
+                        send_text(chat_id,s.messages["unmute_fail"],keyboard)
                     continue
                 #тут будет вся обработка лички (кроме коллбека)
                 if res["message"]["text"]=="/start":
@@ -283,17 +289,17 @@ if __name__=="__main__":
                     text=s.messages["check"]+"\n"
                     n=1
                     for group_chat_id in s.chats.keys():
-                        res=get_chat(group_chat_id)
-                        print(res.content.decode("unicode-escape"))
-                        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape")
+                        res2=get_chat(group_chat_id)
+                        s_tmp=res2.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
                         j=fix_JSON(s_tmp)
+                        print(s_tmp.encode("utf-8",errors="replace").decode())
                         if "result" in j and "title" in j["result"]:
                             title=j["result"]["title"]+f" ({group_chat_id})"
                         else:
                             title=f"<NO TITLE> ({group_chat_id})"
                         res=get_chat_member(group_chat_id,chat_id)
-                        print(res.content.decode("unicode-escape"))
-                        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape")
+                        print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
+                        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
                         j=fix_JSON(s_tmp)
                         if "result" in j and "status" in j["result"]:
                             text+=f"{n}. "+title+"\n"
@@ -314,16 +320,16 @@ if __name__=="__main__":
                     n=1
                     for group_chat_id in s.chats.keys():
                         res=get_chat(group_chat_id)
-                        print(res.content.decode("unicode-escape"))
-                        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape")
+                        print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
+                        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
                         j=fix_JSON(s_tmp)
                         if "result" in j and "title" in j["result"]:
                             title=j["result"]["title"]+f" ({group_chat_id})"
                         else:
                             title=f"<NO TITLE> ({group_chat_id})"
                         res=get_chat_member(group_chat_id,chat_id)
-                        print(res.content.decode("unicode-escape"))
-                        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape")
+                        print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
+                        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
                         j=fix_JSON(s_tmp)
                         if "result" in j and "status" in j["result"]:
                             buttons+='{"text":"'+title+'","callback_data":"'+str(group_chat_id)+'"},'
@@ -332,13 +338,20 @@ if __name__=="__main__":
                     buttons+="]]}"
                     send_text(chat_id,text,reply=buttons)
                     continue
+                if True:#все остальные сообщения
+                    button1=s.messages["check_button"]
+                    button2=s.messages["unmute_button"]
+                    reply='{"keyboard":[[{"text":"'+button1+'"},{"text":"'+button2+'"}]],"resize_keyboard":true}'
+                    send_text(chat_id,s.messages["unknown"].replace("\\n","\n"),reply=reply)
+                    continue
 
                 
                 continue#дальнейшая обработка не имеет смысла
 
             if "callback_query" in res:
                 answer_callback(chat_id,res["callback_query"]["id"])
-                group_chat_id=int(res["callback_query"]["data"])
+                ans_data=res["callback_query"]["data"].split("|")
+                group_chat_id=int(ans_data[0])
                 if group_chat_id not in s.chats:
                     send_text(chat_id,"Chat NOT found")
                     continue
@@ -347,6 +360,8 @@ if __name__=="__main__":
                     print(f"key error! {q_id} question not found! check ini file!")
                     continue
                 text=s.messages["unmute_question"]+"\n\n"
+                if len(ans_data)>1 and ans_data[1]=="another":
+                    text=s.messages["unmute_question_short"]+"\n\n"
                 text+=s.chats[group_chat_id]["Q"][q_id]
                 active_q[chat_id]=q_id
                 active_q_group[chat_id]=group_chat_id
@@ -385,8 +400,8 @@ if __name__=="__main__":
                         message=message.replace("#N",name).replace("\\n","\n")
                         print(message)
                         res=send_text(chat_id,message)
-                        print(res.content.decode("unicode-escape"))
-                        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape")
+                        print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
+                        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
                         j=fix_JSON(s_tmp)
                         if "result" in j:
                             result=j["result"]
@@ -405,7 +420,7 @@ if __name__=="__main__":
                         else:
                             print("not found in result: result")
                         res=restrict(chat_id,int(uid),int(date)+c_s["mute_timer"])#7 дней
-                        print(res.content.decode("unicode-escape"))
+                        print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
                     else:#разбан
                         if status=="member":
                             message=c_s["MSG"]["unban"]

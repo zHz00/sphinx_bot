@@ -67,12 +67,20 @@ def load_chat_settings(id):
         chats[id]["MSG"][m]=c["MESSAGES"][m]
     chats[id]["Q"]=dict()
     chats[id]["A"]=dict()
+    q_id=1
     for m in c["QUESTIONS"]:
-        q_id=int(m[1:])
+        #q_id=int(m[1:])
         q_type=m[0].capitalize()
         if q_type not in ["Q","A"]:
             raise ValueError("Only Q## and A## values allowed in QUESTIONS section")
-        chats[id][q_type][q_id]=c["QUESTIONS"][m]#вопросы и ответы идут в разные секции но под одинаковым индексом
+        if q_type=="Q":
+            chats[id][q_type][q_id]=c["QUESTIONS"][m]#вопросы и ответы идут в разные секции но под одинаковым индексом
+        if q_type=="A":
+            answers=c["QUESTIONS"][m].replace("ё","е").replace("Ё","Е").lower()
+            answers=answers.split("|")
+            chats[id][q_type][q_id]=answers
+            
+            q_id+=1#это сделано чтобы можно было нумеровать вопросы не подряд и не следить за нумерацией. главное чтобы номера не повторялись
     chats[id]["ignore"]=bool(int(c["COMMON"]["ignore"]))
     chats[id]["mute_timer"]=int(c["COMMON"]["mute_timer"])
 
