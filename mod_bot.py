@@ -1,198 +1,10 @@
-import requests
-import json
 import time
+import json
 import datetime
 import random
 
 import settings as s
-
-__token=""
-req_prefix="https://api.telegram.org/bot"
-
-request_idx=0
-
-def init(token):
-    global __token
-    print("Token len: "+str(len(token)))
-    __token=token
-
-def send_text(chat_id,text,reply="",preview=True,tries=3):
-    forbidden=[ '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-    for ch in forbidden:
-        text=text.replace(ch,"\\"+ch)
-    if preview==True:
-        disable_preview_text="False"#потому что дизейбл
-    else:
-        disable_preview_text="True"
-    data = {"chat_id": chat_id, "text": text,"parse_mode":"MarkdownV2","disable_web_page_preview":disable_preview_text}
-    if len(reply)>0:
-        data["reply_markup"]=reply
-    url=req_prefix+__token+"/sendMessage"
-    #print("url:"+url)
-    #print("text:"+text)
-    try:
-        res=requests.post(url,data=data)
-    except:
-        print("error with request (send_text). pause")
-        time.sleep(10)
-        if tries>0:
-            return send_text(chat_id,text,reply,preview,tries-1)
-        else:
-            return []
-    return res
-
-def fix_JSON(json_message=None):
-    result = None
-    try:        
-        result = json.loads(json_message,strict=False)
-    except Exception as e:      
-        # Find the offending character index:
-        idx_to_replace = int(str(e).split(' ')[-1].replace(')', ''))        
-        print(str(e))
-        print("\n=====\n")
-        print(json_message)
-        # Remove the offending character:
-        json_message = list(json_message)
-        json_message[idx_to_replace] = ' '
-        new_message = ''.join(json_message)     
-        return fix_JSON(json_message=new_message)
-    return result
-
-def get_updates(id=0):
-    global request_idx
-    request_idx+=1
-    data={"limit":1,"allowed_updates":'["message","message_reaction","chat_member","callback_query"]'}
-    if id!=0:
-        data["offset"]=id
-    url=req_prefix+__token+"/getUpdates"
-    try:
-        res=requests.post(url,data=data)
-    except:
-        print(f"Request error! Wait 60 (idx:{request_idx})")
-        time.sleep(60)
-        tg_result=dict()
-        update_id=-1
-        return tg_result,update_id
-    s_res=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
-    j=fix_JSON(s_res)
-    if "result" in j:
-        if len(j["result"])>0:
-            tg_result=j["result"][0]
-            update_id=tg_result["update_id"]
-            update_id=int(update_id)
-        else:
-            tg_result=dict()
-            update_id=-1
-    else:
-        error_pause=s.poll_error_pause
-        if "parameters" in j:
-            if "retry_after" in j["paramters"]:
-                error_pause=j["parameters"]["retry_after"]
-                print(f"returned sleep:{error_pause}")
-        print(f"Request error! (no result) Wait {error_pause} (idx:{request_idx})")
-        if "error_code" in j:
-            print(f"There is error_code:{j['error_code']}")
-        else:
-            print("No error_code present. See:"+str(j))
-        time.sleep(error_pause)
-        tg_result=dict()
-        update_id=-1
-        return tg_result,update_id
-    return tg_result,update_id
-
-def get_chat(chat_id,tries=3):
-    data = {"chat_id": chat_id}
-    url=req_prefix+__token+"/getChat"
-    #print("url:"+url)
-    #print("text:"+text)
-    try:
-        res=requests.post(url,data=data)
-    except:
-        print("error with request (get_chat). pause")
-        time.sleep(s.poll_error_pause)
-        if tries>0:
-            return get_chat(chat_id,tries-1)
-        else:
-            return []
-    return res
-
-def get_chat_member(chat_id,uid,tries=3):
-    data = {"chat_id": chat_id,"user_id":uid}
-    url=req_prefix+__token+"/getChatMember"
-    try:
-        res=requests.post(url,data=data)
-    except:
-        print("error with request (get_chat_member). pause")
-        time.sleep(s.poll_error_pause)
-        if tries>0:
-            return get_chat(chat_id,tries-1)
-        else:
-            return []
-    return res
-
-def restrict(chat_id,uid,date,tries=3):
-    data = {"chat_id": chat_id,"user_id":uid,"permissions":'{"can_send_messages":false}',"until_date":date}
-    url=req_prefix+__token+"/restrictChatMember"
-    #print("url:"+url)
-    #print("text:"+text)
-    try:
-        res=requests.post(url,data=data)
-    except:
-        print("error with request (restrict). pause")
-        time.sleep(s.poll_error_pause)
-        if tries>0:
-            return restrict(chat_id,uid,date,tries-1)
-        else:
-            return []
-    return res
-
-def unrestrict(chat_id,uid,tries=3):
-    data = {"chat_id": chat_id,"user_id":uid,"permissions":'{"can_send_messages":true,"can_send_audios":true,"can_send_documents":true,"can_send_photos":true,"can_send_videos":true,"can_send_video_notes":true,"can_send_voice_notes":true,"can_send_polls":true,"can_send_other_messages":true,"can_add_web_page_previews":true,"can_change_info":true,"can_invite_users":true,"can_pin_messages":true,"can_manage_topics":true}',"until_date":date}
-    url=req_prefix+__token+"/restrictChatMember"
-    #print("url:"+url)
-    #print("text:"+text)
-    try:
-        res=requests.post(url,data=data)
-    except:
-        print("error with request (restrict). pause")
-        time.sleep(s.poll_error_pause)
-        if tries>0:
-            return restrict(chat_id,uid,date,tries-1)
-        else:
-            return []
-    return res
-
-def delete_message(chat_id,message_id,tries=3):
-    data = {"chat_id": chat_id,"message_id":message_id}
-    url=req_prefix+__token+"/deleteMessage"
-    #print("url:"+url)
-    #print("text:"+text)
-    try:
-        res=requests.post(url,data=data)
-    except:
-        print("error with request (deleteMessage). pause")
-        time.sleep(s.poll_error_pause)
-        if tries>0:
-            return restrict(chat_id,message_id,tries-1)
-        else:
-            return []
-    return res
-
-def answer_callback(chat_id,callback_query_id,tries=3):
-    data = {"chat_id": chat_id,"callback_query_id":callback_query_id,"text":"OK!"}
-    url=req_prefix+__token+"/answerCallbackQuery"
-    #print("url:"+url)
-    #print("text:"+text)
-    try:
-        res=requests.post(url,data=data)
-    except:
-        print("error with request (answerCallbackQuery). pause")
-        time.sleep(s.poll_error_pause)
-        if tries>0:
-            return answer_callback(chat_id,callback_query_id,tries-1)
-        else:
-            return []
-    return res
+from tg_lib import *
 
 
 if __name__=="__main__":
@@ -206,7 +18,11 @@ if __name__=="__main__":
     init(s.token)
     id=-1
     sent_counter=3
+    queue_msg=[]
+    queue_member=[]
     while(1):
+        time.sleep(s.poll_pause)
+
         for i in range(len(to_delete_id)):
             m_chat_id=to_delete_chat_id[i]
             m_id=to_delete_id[i]
@@ -229,19 +45,33 @@ if __name__=="__main__":
                         print(f"message NOT deleted, [ok]==false. id={m_id},date={m_date}")
                 else:
                     print(f"message NOT deleted, [ok] section absent. id={m_id},date={m_date}")
-        (res,id_new)=get_updates(id+1)
+        update_list=[]
+        res=dict()
+        (update_list,id_new)=(get_updates(id+1))
         if id_new!=-1:
             id=id_new
         #if res.contents!=""
+        for u in update_list:
+            if "chat_member" in u:
+                queue_member.append(u)
+            else:
+                if len(u)>0:
+                    queue_msg.append(u)
+        if len(queue_member)>0:
+            res=queue_member.pop(0)
+        else:
+            if len(queue_msg)>0:
+                res=queue_msg.pop(0)
         if len(res)>0:
             date=1
             chat_id=0
             if "message" in res:
                 date=res["message"]["date"]
                 chat_id=res["message"]["chat"]["id"]
-                if "text" in res["message"] and res["message"]["text"]=="test1147":
-                    send_text(chat_id,"response784")
+                if "text" in res["message"] and res["message"]["text"].startswith("test1147"):
+                    send_text(chat_id,"response784:"+res["message"]["text"][8:])
                     #send_text(chat_id,"\u0421\u0432\u0435\u0442\u043b\u0430\u043d\u0430 \u041c\u0438\u0449\u0435\u043d\u043a\u043e")
+                    continue
             if "message_reaction" in res:
                 date=res["message_reaction"]["date"]
                 chat_id=res["message_reaction"]["chat"]["id"]
@@ -302,6 +132,8 @@ if __name__=="__main__":
                         s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
                         j=fix_JSON(s_tmp)
                         if "result" in j and "status" in j["result"]:
+                            if j["result"]["status"]=="left":
+                                continue
                             text+=f"{n}. "+title+"\n"
                             text+=j["result"]["status"]+"\n"
                             if j["result"]["status"]=="restricted":
@@ -312,11 +144,12 @@ if __name__=="__main__":
                             else:
                                 text+=s.messages["mode_allowed"]
                         text+="\n\n"
+                        n+=1
                     send_text(chat_id,text)
                     continue
                 if res["message"]["text"]==s.messages["unmute_button"]:
                     text=s.messages["unmute"]+"\n"
-                    buttons='{"inline_keyboard":[['
+                    buttons='{"inline_keyboard":['
                     n=1
                     for group_chat_id in s.chats.keys():
                         res=get_chat(group_chat_id)
@@ -332,10 +165,12 @@ if __name__=="__main__":
                         s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
                         j=fix_JSON(s_tmp)
                         if "result" in j and "status" in j["result"]:
-                            buttons+='{"text":"'+title+'","callback_data":"'+str(group_chat_id)+'"},'
+                            if j["result"]["status"]=="left":
+                                continue
+                            buttons+='[{"text":"'+title+'","callback_data":"'+str(group_chat_id)+'"}],'
                     if buttons[-1]==",":
                         buttons=buttons[:-1]
-                    buttons+="]]}"
+                    buttons+="]}"
                     send_text(chat_id,text,reply=buttons)
                     continue
                 if True:#все остальные сообщения
@@ -429,5 +264,3 @@ if __name__=="__main__":
                             send_text(chat_id,message)
                         else:
                             pass#кого-то забанили или он получил новые ограничения. не будем выводить сообщений
-
-        time.sleep(s.poll_pause)
