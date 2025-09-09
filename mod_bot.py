@@ -2,6 +2,7 @@ import time
 import json
 import datetime
 import random
+import os
 
 import settings as s
 from tg_lib import *
@@ -72,6 +73,21 @@ if __name__=="__main__":
                     send_text(chat_id,"response784:"+res["message"]["text"][8:])
                     #send_text(chat_id,"\u0421\u0432\u0435\u0442\u043b\u0430\u043d\u0430 \u041c\u0438\u0449\u0435\u043d\u043a\u043e")
                     continue
+                if "text" in res["message"] and res["message"]["text"].startswith("test_result") and s.owner_id==chat_id:
+                    if os.path.exists("output.txt"):
+                        send_file(chat_id,"output","output.txt")
+                    else:
+                        send_text(chat_id,"File absent"+res["message"]["text"][8:])
+                    #send_text(chat_id,"\u0421\u0432\u0435\u0442\u043b\u0430\u043d\u0430 \u041c\u0438\u0449\u0435\u043d\u043a\u043e")
+                    continue
+                if "text" in res["message"] and res["message"]["text"].startswith("test_command") and s.owner_id==chat_id:
+                    normal_path=os.getcwd()
+                    os.chdir(s.command_path)
+                    command="start cmd /c "+s.command+" ^>\""+normal_path+"\\output.txt\""
+                    os.system(command)
+                    os.chdir(normal_path)
+                    send_text(chat_id,"Command sent")
+                    continue
             if "message_reaction" in res:
                 date=res["message_reaction"]["date"]
                 chat_id=res["message_reaction"]["chat"]["id"]
@@ -79,7 +95,7 @@ if __name__=="__main__":
                 date=res["chat_member"]["date"]
                 chat_id=res["chat_member"]["chat"]["id"]
             if "callback_query" in res:
-                date=0
+                date=res["callback_query"]["message"]["date"]
                 chat_id=res["callback_query"]["from"]["id"]
 
             date_s=datetime.datetime.fromtimestamp(date).strftime("%B %d %Y, %H:%M:%S")#ftime.strftime("%B %d %Y", str(date))
@@ -90,7 +106,33 @@ if __name__=="__main__":
             #t.write(txt)
             t.write("\n")
             t.close()
-            #res=test_res
+            t=open("message_log_readable.txt","a",encoding="utf-8",errors="replace")
+            try:
+                if "message" in res:
+                    m=res["message"]
+                    type=m["chat"]["type"]
+                    from_u=m["from"]["first_name"]
+                    if "text" in m:
+                        text=m["text"]
+                    else:
+                        text="Enter?"
+                    t.write(f"{date_s}: [{chat_id} ({type})][{from_u}]:{text}\n")
+                if "callback_query" in res:
+                    c_id=res["callback_query"]["id"]
+                    from_u=m["from"]["first_name"]
+                    data=res["callback_query"]["data"]
+                    t.write(f"{date_s}: [{chat_id}][{from_u}]:callback, id={c_id},data={data}\n")
+                if "chat_member" in res:
+                    cm=res["chat_member"]
+                    user=cm["new_chat_member"]["user"]
+                    from_u=user["first_name"]
+                    status=cm["new_chat_member"]["status"]
+                    t.write(f"{date_s}: [{chat_id}][{from_u}]:chat_mamber, new_status={status}\n")
+
+
+            except:
+                t.write(f"{date}: Exception\n")
+            t.close()
 
             if "message" in res and res["message"]["chat"]["type"]=="private":
                 if "text" not in res["message"]:

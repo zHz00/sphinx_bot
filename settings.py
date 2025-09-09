@@ -9,6 +9,9 @@ token=""
 chats=dict()
 messages=dict()
 new_chats_allowed=True
+owner_id=0
+command="uname -a"
+command_path="."
 
 chats_folder="chats/"
 default_file="default.ini"
@@ -21,13 +24,19 @@ def load():
     global auto_delete_time
     global token
     global messages
+    global owner_id
+    global command
+    global command_path
     c=configparser.ConfigParser()
     c.read("settings_global.ini",encoding="utf-8")
     new_chats_allowed=bool(c["COMMON"]["new_chats_allowed"])
     poll_pause=int(c["COMMON"]["poll_pause"])
     poll_error_pause=int(c["COMMON"]["poll_error_pause"])
     auto_delete_time=int(c["COMMON"]["auto_delete_time"])
+    command=c["COMMON"]["command"]
+    command_path=c["COMMON"]["command_path"]
     token=c["COMMON"]["token"]
+    owner_id=int(c["COMMON"]["owner_id"])
     messages=dict()
     for m in c["MESSAGES"]:
         messages[m]=c["MESSAGES"][m]

@@ -14,6 +14,21 @@ def init(token):
     print("Token len: "+str(len(token)))
     __token=token
 
+def send_file(chat_id,caption,file,tries=3):
+    data = {"chat_id": chat_id, "caption": caption}
+    try:
+        with open(file, "rb") as data_file:
+            res=requests.post(req_prefix+__token+"/sendDocument",data=data,files={"document":data_file})
+    except:
+        print("error with request (send_file). pause")
+        time.sleep(10)
+        if tries>0:
+            return send_file(chat_id,caption,file,tries-1)
+        else:
+            return []
+
+    return res
+
 def send_text(chat_id,text,reply="",preview=True,tries=3):
     forbidden=[ '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
     for ch in forbidden:
@@ -28,6 +43,9 @@ def send_text(chat_id,text,reply="",preview=True,tries=3):
     url=req_prefix+__token+"/sendMessage"
     #print("url:"+url)
     #print("text:"+text)
+    t=open("message_log_readable.txt","a",encoding="utf-8",errors="replace")
+    t.write(f"Sending text:{chat_id},{text}\n")
+    t.close()
     try:
         res=requests.post(url,data=data)
     except:
@@ -48,7 +66,10 @@ def fix_JSON(json_message=None):
         idx_to_replace = int(str(e).split(' ')[-1].replace(')', ''))        
         print(str(e))
         print("\n=====\n")
-        print(json_message)
+        try:
+            print(json_message)
+        except:
+            print("(message with surrogates)")
         # Remove the offending character:
         json_message = list(json_message)
         json_message[idx_to_replace] = ' '
@@ -71,7 +92,8 @@ def get_updates(id=0):
         tg_result=[dict()]
         update_id=-1
         return tg_result,update_id
-    s_res=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
+    #s_res=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
+    s_res=res.content
     j=fix_JSON(s_res)
     if "result" in j:
         if len(j["result"])>0:
@@ -85,7 +107,7 @@ def get_updates(id=0):
     else:
         error_pause=s.poll_error_pause
         if "parameters" in j:
-            if "retry_after" in j["paramters"]:
+            if "retry_after" in j["parameters"]:
                 error_pause=j["parameters"]["retry_after"]
                 print(f"returned sleep:{error_pause}")
         print(f"Request error! (no result) Wait {error_pause} (idx:{request_idx})")
