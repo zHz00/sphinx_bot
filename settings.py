@@ -92,5 +92,8 @@ def load_chat_settings(id):
             q_id+=1#это сделано чтобы можно было нумеровать вопросы не подряд и не следить за нумерацией. главное чтобы номера не повторялись
     chats[id]["ignore"]=bool(int(c["COMMON"]["ignore"]))
     chats[id]["mute_timer"]=int(c["COMMON"]["mute_timer"])
+    chats[id]["reactions_max"]=int(c["COMMON"]["reactions_max"])
+    chats[id]["reactions_warning"]=int(c["COMMON"]["reactions_warning"])
+    chats[id]["reactions_final_warning"]=int(c["COMMON"]["reactions_final_warning"])
 
     

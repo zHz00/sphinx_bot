@@ -14,6 +14,7 @@ if __name__=="__main__":
     to_delete_date=[]
     active_q=dict()
     active_q_group=dict()
+    reactions_from_restricted=dict()
     q_id=0
     s.load()
     init(s.token)
@@ -98,7 +99,7 @@ if __name__=="__main__":
                 date=res["callback_query"]["message"]["date"]
                 chat_id=res["callback_query"]["from"]["id"]
 
-            date_s=datetime.datetime.fromtimestamp(date).strftime("%B %d %Y, %H:%M:%S")#ftime.strftime("%B %d %Y", str(date))
+            date_s=datetime.datetime.fromtimestamp(date).strftime("%Y-%m-%dT%H:%M:%S")#ftime.strftime("%B %d %Y", str(date))
             print(f"update_id={id}, {date_s}")
             t=open("messages_log.txt","a",encoding="utf-8",errors="replace")
             txt=json.dumps(res,ensure_ascii=False)
@@ -244,6 +245,47 @@ if __name__=="__main__":
                 active_q_group[chat_id]=group_chat_id
                 send_text(chat_id,text)
                 continue
+        
+            if "message_reaction" in res:
+                date=res["message_reaction"]["date"]
+                chat_id=res["message_reaction"]["chat"]["id"]
+                if "user" not in res["message_reaction"]:#anonymous reaction
+                    continue
+                user=res["message_reaction"]["user"]
+                uid=user["id"]
+                name=user["first_name"]
+                if "last_name" in user:
+                    name+=" "+user["last_name"]
+                if "username" in user:
+                    name+=" ("+user["username"]+")"
+                res=get_chat_member(chat_id,uid)
+                print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
+                s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
+                j=fix_JSON(s_tmp)
+                if "result" in j and "status" in j["result"]:
+                    if j["result"]["status"]=="restricted":#restricted user makes reactions!
+                        index=str(chat_id)+"|"+str(uid)
+                        if index not in reactions_from_restricted:
+                            reactions_from_restricted[index]=1
+                        else:
+                            reactions_from_restricted[index]+=1
+                        n_reactions=reactions_from_restricted[index]
+                        print(f"reaction made from restricted user: {uid}, N={n_reactions}")
+                        if int(s.chats[chat_id]["reactions_max"])==0:
+                            continue
+                        if n_reactions>int(s.chats[chat_id]["reactions_max"]):
+                            ban(chat_id,uid,0)
+                            send_text(chat_id,s.chats[chat_id]["MSG"]["ban"].replace("#N",name).replace("\\n","\n"))
+                            reactions_from_restricted[index]=0
+                            continue
+                        if n_reactions==int(s.chats[chat_id]["reactions_final_warning"]):
+                            send_text(chat_id,s.chats[chat_id]["MSG"]["reactions_final_warning"].replace("#N",name).replace("\\n","\n"))
+                            continue
+                        if n_reactions==int(s.chats[chat_id]["reactions_warning"]):
+                            send_text(chat_id,s.chats[chat_id]["MSG"]["reactions_warning"].replace("#N",name).replace("\\n","\n"))
+                            continue
+
+                    
 
             #остались группы и супергруппы (а может и ещё что, т.к. по документации это непонятно)
             c_s=dict()

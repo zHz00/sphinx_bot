@@ -151,6 +151,23 @@ def get_chat_member(chat_id,uid,tries=3):
             return []
     return res
 
+def ban(chat_id,uid,date,tries=3):
+    data = {"chat_id": chat_id,"user_id":uid,"until_date":date}
+    url=req_prefix+__token+"/banChatMember"
+    #print("url:"+url)
+    #print("text:"+text)
+    try:
+        res=requests.post(url,data=data)
+    except:
+        print("error with request (restrict). pause")
+        time.sleep(s.poll_error_pause)
+        if tries>0:
+            return ban(chat_id,uid,date,tries-1)
+        else:
+            return []
+    return res
+
+
 def restrict(chat_id,uid,date,tries=3):
     data = {"chat_id": chat_id,"user_id":uid,"permissions":'{"can_send_messages":false}',"until_date":date}
     url=req_prefix+__token+"/restrictChatMember"
