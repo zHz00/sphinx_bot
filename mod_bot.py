@@ -113,10 +113,39 @@ if __name__=="__main__":
                     m=res["message"]
                     type=m["chat"]["type"]
                     from_u=m["from"]["first_name"]
+                    text=None
+                    rare_types=["animation",
+                        "audio",
+                        "document",
+                        "photo",
+                        "sticker",
+                        "story",
+                        "video",
+                        "video_note",
+                        "voice",
+                        "checklist",
+                        "contact",
+                        "dice",
+                        "game",
+                        "poll",
+                        "venue",
+                        "location",
+                        "invoice",
+                        "successful_payment",
+                        "refunded_payment",
+                        "giveaway",
+                        "new_chat_members",
+                        "left_chat_member",
+                        "new_chat_title",
+                        "new_chat_photo"
+                        ]
                     if "text" in m:
                         text=m["text"]
-                    else:
-                        text="Enter?"
+                    for rt in rare_types:
+                        if rt in m:
+                            text="["+rt+"]"
+                    if text is None:
+                        text="[Unknown message type]"
                     t.write(f"{date_s}: [{chat_id} ({type})][{from_u}]:{text}\n")
                 if "callback_query" in res:
                     c_id=res["callback_query"]["id"]
@@ -128,8 +157,17 @@ if __name__=="__main__":
                     user=cm["new_chat_member"]["user"]
                     from_u=user["first_name"]
                     status=cm["new_chat_member"]["status"]
-                    t.write(f"{date_s}: [{chat_id}][{from_u}]:chat_mamber, new_status={status}\n")
-
+                    t.write(f"{date_s}: [{chat_id}][{from_u}]:chat_member, new_status={status}\n")
+                if "message_reaction" in res:
+                    date=res["message_reaction"]["date"]
+                    chat_id=res["message_reaction"]["chat"]["id"]
+                    from_u="---"
+                    if "user"in res["message_reaction"]:
+                        user=res["message_reaction"]["user"]
+                        from_u=user["first_name"]
+                    else:
+                        from_u="Unkonwn user"
+                    t.write(f"{date_s}: [{chat_id}][{from_u}]:reaction\n")
 
             except:
                 t.write(f"{date}: Exception\n")
@@ -167,9 +205,9 @@ if __name__=="__main__":
                         j=fix_JSON(s_tmp)
                         print(s_tmp.encode("utf-8",errors="replace").decode())
                         if "result" in j and "title" in j["result"]:
-                            title=j["result"]["title"]+f" ({group_chat_id})"
+                            title=j["result"]["title"]+f" (id: {group_chat_id})"
                         else:
-                            title=f"<NO TITLE> ({group_chat_id})"
+                            title=f"<NO TITLE> (id: {group_chat_id})"
                         res=get_chat_member(group_chat_id,chat_id)
                         print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
                         s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
@@ -178,7 +216,7 @@ if __name__=="__main__":
                             if j["result"]["status"]=="left":
                                 continue
                             text+=f"{n}. "+title+"\n"
-                            text+=j["result"]["status"]+"\n"
+                            #text+=j["result"]["status"]+"\n"
                             if j["result"]["status"]=="restricted":
                                 if s.chats[group_chat_id]["mute_timer"]==0:
                                     text+=s.messages["mode_restricted_forever"]
@@ -338,8 +376,16 @@ if __name__=="__main__":
                                 print("not found in result: date")
                         else:
                             print("not found in result: result")
-                        res=restrict(chat_id,int(uid),int(date)+c_s["mute_timer"])#7 дней
-                        print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
+                        actual_mute=True
+                        if (status=="restricted" and is_member):#new member is already muted, we must check current timer
+                            limit=int(cm["new_chat_member"]["until_date"])
+                            if limit>int(date)+c_s["mute_timer"]:
+                                actual_mute=False
+                        if actual_mute:
+                            res=restrict(chat_id,int(uid),int(date)+c_s["mute_timer"])#7 дней
+                            print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
+                        else:
+                            print("Current mute limit is greater than new member mute limit, so limit will not be decreased. Skippings...")
                     else:#разбан
                         if status=="member":
                             message=c_s["MSG"]["unban"]

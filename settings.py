@@ -17,6 +17,12 @@ chats_folder="chats/"
 default_file="default.ini"
 ignore_file="ignore.ini"
 
+proxy_ip=""
+proxy_port=""
+proxy_user=""
+proxy_pass=""
+
+
 def load():
     global new_chats_allowed
     global poll_pause
@@ -27,8 +33,13 @@ def load():
     global owner_id
     global command
     global command_path
+    global proxy_ip,proxy_port,proxy_user,proxy_pass
+
     c=configparser.ConfigParser()
-    c.read("settings_global.ini",encoding="utf-8")
+    try:
+        c.read("settings_global.ini",encoding="utf-8")
+    except:
+        c.read("settings_global.ini",encoding="utf-8-sig")
     new_chats_allowed=bool(c["COMMON"]["new_chats_allowed"])
     poll_pause=int(c["COMMON"]["poll_pause"])
     poll_error_pause=int(c["COMMON"]["poll_error_pause"])
@@ -40,6 +51,11 @@ def load():
     messages=dict()
     for m in c["MESSAGES"]:
         messages[m]=c["MESSAGES"][m]
+
+    proxy_ip=c["PROXY"]["ip"]
+    proxy_port=c["PROXY"]["port"]
+    proxy_user=c["PROXY"]["user"]
+    proxy_pass=c["PROXY"]["pass"]
 
     file_list=listdir(chats_folder)
     id=0
@@ -53,6 +69,7 @@ def load():
         except:#что-то не так с именем файла
             print("error with file name while loading chat:"+file)
             continue
+    
 
 
 def load_chat_settings(id):
@@ -62,7 +79,10 @@ def load_chat_settings(id):
     chats[id]=dict()
     filename=chats_folder+str(id)+".ini"
     c=configparser.ConfigParser()
-    c.read(filename,encoding="utf-8")
+    try:
+        c.read(filename,encoding="utf-8")
+    except:
+        c.read(filename,encoding="utf-8-sig")
     if "COMMON" not in c:#файл отсутствует или битый. увы, функция не выбрасывает исключения...
         print("creating new chat ini-file")
         if new_chats_allowed:
@@ -96,4 +116,17 @@ def load_chat_settings(id):
     chats[id]["reactions_warning"]=int(c["COMMON"]["reactions_warning"])
     chats[id]["reactions_final_warning"]=int(c["COMMON"]["reactions_final_warning"])
 
-    
+def get_proxies():
+    url="socks5://"
+    if len(proxy_user)>0:
+        url+=proxy_user
+    if len(proxy_pass)>0:
+        url+=":"+proxy_pass+"@"
+    else:
+        if len(proxy_user)>0:
+            url+="@"
+    url+=proxy_ip+":"+proxy_port
+    if len(proxy_ip)>0:
+        return dict(http=url,https=url)
+    else:
+        return dict()

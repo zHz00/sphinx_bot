@@ -18,7 +18,7 @@ def send_file(chat_id,caption,file,tries=3):
     data = {"chat_id": chat_id, "caption": caption}
     try:
         with open(file, "rb") as data_file:
-            res=requests.post(req_prefix+__token+"/sendDocument",data=data,files={"document":data_file})
+            res=requests.post(req_prefix+__token+"/sendDocument",data=data,files={"document":data_file},proxies=s.get_proxies())
     except:
         print("error with request (send_file). pause")
         time.sleep(10)
@@ -47,7 +47,7 @@ def send_text(chat_id,text,reply="",preview=True,tries=3):
     t.write(f"Sending text:{chat_id},{text}\n")
     t.close()
     try:
-        res=requests.post(url,data=data)
+        res=requests.post(url,data=data,proxies=s.get_proxies())
     except:
         print("error with request (send_text). pause")
         time.sleep(10)
@@ -85,7 +85,7 @@ def get_updates(id=0):
         data["offset"]=id
     url=req_prefix+__token+"/getUpdates"
     try:
-        res=requests.post(url,data=data)
+        res=requests.post(url,data=data,proxies=s.get_proxies())
     except:
         print(f"Request error! Wait 60 (idx:{request_idx})")
         time.sleep(60)
@@ -127,7 +127,7 @@ def get_chat(chat_id,tries=3):
     #print("url:"+url)
     #print("text:"+text)
     try:
-        res=requests.post(url,data=data)
+        res=requests.post(url,data=data,proxies=s.get_proxies())
     except:
         print("error with request (get_chat). pause")
         time.sleep(s.poll_error_pause)
@@ -141,7 +141,7 @@ def get_chat_member(chat_id,uid,tries=3):
     data = {"chat_id": chat_id,"user_id":uid}
     url=req_prefix+__token+"/getChatMember"
     try:
-        res=requests.post(url,data=data)
+        res=requests.post(url,data=data,proxies=s.get_proxies())
     except:
         print("error with request (get_chat_member). pause")
         time.sleep(s.poll_error_pause)
@@ -157,7 +157,7 @@ def ban(chat_id,uid,date,tries=3):
     #print("url:"+url)
     #print("text:"+text)
     try:
-        res=requests.post(url,data=data)
+        res=requests.post(url,data=data,proxies=s.get_proxies())
     except:
         print("error with request (restrict). pause")
         time.sleep(s.poll_error_pause)
@@ -174,7 +174,7 @@ def restrict(chat_id,uid,date,tries=3):
     #print("url:"+url)
     #print("text:"+text)
     try:
-        res=requests.post(url,data=data)
+        res=requests.post(url,data=data,proxies=s.get_proxies())
     except:
         print("error with request (restrict). pause")
         time.sleep(s.poll_error_pause)
@@ -190,7 +190,7 @@ def unrestrict(chat_id,uid,tries=3):
     #print("url:"+url)
     #print("text:"+text)
     try:
-        res=requests.post(url,data=data)
+        res=requests.post(url,data=data,proxies=s.get_proxies())
     except:
         print("error with request (restrict). pause")
         time.sleep(s.poll_error_pause)
@@ -206,7 +206,7 @@ def delete_message(chat_id,message_id,tries=3):
     #print("url:"+url)
     #print("text:"+text)
     try:
-        res=requests.post(url,data=data)
+        res=requests.post(url,data=data,proxies=s.get_proxies())
     except:
         print("error with request (deleteMessage). pause")
         time.sleep(s.poll_error_pause)
@@ -222,7 +222,7 @@ def answer_callback(chat_id,callback_query_id,tries=3):
     #print("url:"+url)
     #print("text:"+text)
     try:
-        res=requests.post(url,data=data)
+        res=requests.post(url,data=data,proxies=s.get_proxies())
     except:
         print("error with request (answerCallbackQuery). pause")
         time.sleep(s.poll_error_pause)
