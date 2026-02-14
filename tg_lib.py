@@ -31,8 +31,12 @@ def send_file(chat_id,caption,file,tries=3):
 
 def send_text(chat_id,text,reply="",preview=True,tries=3):
     forbidden=[ '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    #forbidden=[ '_', '*', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    allowed=["\\#\\(","\\#\\)","\\#\\[","\\#\\]"]#те символы, которые не надо было заменять
     for ch in forbidden:
         text=text.replace(ch,"\\"+ch)
+    for ch in allowed:
+        text=text.replace(ch,ch[-1])
     if preview==True:
         disable_preview_text="False"#потому что дизейбл
     else:
@@ -80,14 +84,14 @@ def fix_JSON(json_message=None):
 def get_updates(id=0):
     global request_idx
     request_idx+=1
-    data={"limit":100,"allowed_updates":'["message","message_reaction","chat_member","callback_query"]'}
+    data={"limit":100,"allowed_updates":'["message","message_reaction","chat_member","callback_query","voice"]',"timeout":s.poll_wait_timeout}
     if id!=0:
         data["offset"]=id
     url=req_prefix+__token+"/getUpdates"
     try:
-        res=requests.post(url,data=data,proxies=s.get_proxies())
-    except:
-        print(f"Request error! Wait 60 (idx:{request_idx})")
+        res=requests.post(url,data=data,proxies=s.get_proxies(),timeout=s.poll_wait_timeout+2)
+    except Exception as e:      
+        print(f"Request error [{str(e)}]! Wait 60 (idx:{request_idx})")
         time.sleep(60)
         tg_result=[dict()]
         update_id=-1
@@ -102,6 +106,7 @@ def get_updates(id=0):
             update_id=tg_result[-1]["update_id"]
             update_id=int(update_id)
         else:
+            print("(empty answer)")
             tg_result=[dict()]
             update_id=-1
     else:

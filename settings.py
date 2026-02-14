@@ -3,6 +3,7 @@ import shutil
 from os import listdir
 
 poll_pause=15
+poll_wait_timeout=15
 poll_error_pause=60
 auto_delete_time=3600
 token=""
@@ -12,6 +13,7 @@ new_chats_allowed=True
 owner_id=0
 command="uname -a"
 command_path="."
+answer_retry_time=30
 
 chats_folder="chats/"
 default_file="default.ini"
@@ -26,6 +28,7 @@ proxy_pass=""
 def load():
     global new_chats_allowed
     global poll_pause
+    global poll_wait_timeout
     global poll_error_pause
     global auto_delete_time
     global token
@@ -34,6 +37,7 @@ def load():
     global command
     global command_path
     global proxy_ip,proxy_port,proxy_user,proxy_pass
+    global answer_retry_time
 
     c=configparser.ConfigParser()
     try:
@@ -42,8 +46,10 @@ def load():
         c.read("settings_global.ini",encoding="utf-8-sig")
     new_chats_allowed=bool(c["COMMON"]["new_chats_allowed"])
     poll_pause=int(c["COMMON"]["poll_pause"])
+    poll_wait_timeout=int(c["COMMON"]["poll_wait_timeout"])
     poll_error_pause=int(c["COMMON"]["poll_error_pause"])
     auto_delete_time=int(c["COMMON"]["auto_delete_time"])
+    answer_retry_time=int(c["COMMON"]["answer_retry_time"])
     command=c["COMMON"]["command"]
     command_path=c["COMMON"]["command_path"]
     token=c["COMMON"]["token"]

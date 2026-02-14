@@ -12,6 +12,9 @@ if __name__=="__main__":
     to_delete_chat_id=[]
     to_delete_id=[]
     to_delete_date=[]
+
+    failed_tries_chat_id=[]
+    failed_tries_date=[]
     active_q=dict()
     active_q_group=dict()
     reactions_from_restricted=dict()
@@ -23,8 +26,16 @@ if __name__=="__main__":
     queue_msg=[]
     queue_member=[]
     while(1):
+        print("begin poll pause...",end="")
         time.sleep(s.poll_pause)
+        print("done")
 
+        for i in range(len(failed_tries_chat_id)):
+            m_date=failed_tries_date[i]
+            dif=int(datetime.datetime.now().timestamp())-m_date
+            if dif>s.answer_retry_time:
+                failed_tries_chat_id.pop(i)
+                failed_tries_date.pop(i)
         for i in range(len(to_delete_id)):
             m_chat_id=to_delete_chat_id[i]
             m_id=to_delete_id[i]
@@ -73,6 +84,7 @@ if __name__=="__main__":
                 if "text" in res["message"] and res["message"]["text"].startswith("test1147"):
                     send_text(chat_id,"response784:"+res["message"]["text"][8:])
                     #send_text(chat_id,"\u0421\u0432\u0435\u0442\u043b\u0430\u043d\u0430 \u041c\u0438\u0449\u0435\u043d\u043a\u043e")
+                    send_text(chat_id,"testing markdown (v2), this is link exapmle: #[link#]#(https://example.com/#)")
                     continue
                 if "text" in res["message"] and res["message"]["text"].startswith("test_result") and s.owner_id==chat_id:
                     if os.path.exists("output.txt"):
@@ -187,7 +199,14 @@ if __name__=="__main__":
                         unrestrict(group_chat_id,chat_id)
                     else:
                         keyboard='{"inline_keyboard":[[{"text":"'+s.messages["again"]+'","callback_data":"'+str(group_chat_id)+'|another"}]]}'
-                        send_text(chat_id,s.messages["unmute_fail"],keyboard)
+                        send_text(chat_id,s.messages["unmute_fail"].replace("#T",str(s.answer_retry_time)),keyboard)
+                        failed_tries_chat_id.append(chat_id)
+                        if "date" in res:
+                            failed_tries_date.append(res["date"])
+                        else:
+                            failed_tries_date.append(int(datetime.datetime.now().timestamp()))
+                            print("Not found date field in user answer")
+
                     continue
                 #тут будет вся обработка лички (кроме коллбека)
                 if res["message"]["text"]=="/start":
@@ -268,6 +287,9 @@ if __name__=="__main__":
                 answer_callback(chat_id,res["callback_query"]["id"])
                 ans_data=res["callback_query"]["data"].split("|")
                 group_chat_id=int(ans_data[0])
+                if chat_id in failed_tries_chat_id:
+                    send_text(chat_id,s.messages["early"].replace("#T",str(s.answer_retry_time)))
+                    continue
                 if group_chat_id not in s.chats:
                     send_text(chat_id,"Chat NOT found")
                     continue
@@ -354,7 +376,8 @@ if __name__=="__main__":
                     #name=name.encode("unicode-escape").decode()
                     if uid==uid_from:#настоящий вход
                         message=c_s["MSG"]["hello"]
-                        message=message.replace("#N",name).replace("\\n","\n")
+                        id_link="#[профиль#]#(tg://user?id="+str(uid)+"#)"
+                        message=message.replace("#N",name).replace("#I",id_link).replace("\\n","\n")
                         print(message)
                         res=send_text(chat_id,message)
                         print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
@@ -379,11 +402,12 @@ if __name__=="__main__":
                         actual_mute=True
                         if (status=="restricted" and is_member):#new member is already muted, we must check current timer
                             limit=int(cm["new_chat_member"]["until_date"])
+                            print(f"limit: {limit}, date: {date}, timer:{c_s['mute_timer']}")
                             if limit>int(date)+c_s["mute_timer"]:
                                 actual_mute=False
                         if actual_mute:
                             res=restrict(chat_id,int(uid),int(date)+c_s["mute_timer"])#7 дней
-                            print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
+                            print("restricted: "+res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
                         else:
                             print("Current mute limit is greater than new member mute limit, so limit will not be decreased. Skippings...")
                     else:#разбан
