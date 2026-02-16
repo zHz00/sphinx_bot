@@ -48,7 +48,7 @@ def send_text(chat_id,text,reply="",preview=True,tries=3):
     #print("url:"+url)
     #print("text:"+text)
     t=open("message_log_readable.txt","a",encoding="utf-8",errors="replace")
-    t.write(f"Sending text:{chat_id},{text}\n")
+    t.write(f"Sending text:{chat_id},{text}\nreply=[{reply}]\n")
     t.close()
     try:
         res=requests.post(url,data=data,proxies=s.get_proxies())
@@ -101,7 +101,7 @@ def get_updates(id=0):
     j=fix_JSON(s_res)
     if "result" in j:
         if len(j["result"])>0:
-            print(f'LEN={len(j["result"])}')
+            print(f'\nLEN={len(j["result"])}')
             tg_result=j["result"]
             update_id=tg_result[-1]["update_id"]
             update_id=int(update_id)

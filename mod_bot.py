@@ -7,18 +7,387 @@ import os
 import settings as s
 from tg_lib import *
 
+rare_types=["animation",
+    "audio",
+    "document",
+    "photo",
+    "sticker",
+    "story",
+    "video",
+    "video_note",
+    "voice",
+    "checklist",
+    "contact",
+    "dice",
+    "game",
+    "poll",
+    "venue",
+    "location",
+    "invoice",
+    "successful_payment",
+    "refunded_payment",
+    "giveaway",
+    "new_chat_members",
+    "left_chat_member",
+    "new_chat_title",
+    "new_chat_photo"
+    ]
+
+to_delete_chat_id=[]
+to_delete_id=[]
+to_delete_date=[]
+
+failed_tries_chat_id=[]
+failed_tries_date=[]
+active_q=dict()
+active_q_group=dict()
+
+reactions_from_restricted=dict()
+
+def process_timeout_wrong_answer():
+    global failed_tries_chat_id,failed_tries_date
+    for i in range(len(failed_tries_chat_id)):
+        m_date=failed_tries_date[i]
+        dif=int(datetime.datetime.now().timestamp())-m_date
+        if dif>s.answer_retry_time:
+            failed_tries_chat_id.pop(i)
+            failed_tries_date.pop(i)
+    return
+
+def process_timeout_greeting():
+    global to_delete_chat_id,to_delete_id,to_delete_date
+    for i in range(len(to_delete_id)):
+        m_chat_id=to_delete_chat_id[i]
+        m_id=to_delete_id[i]
+        m_date=to_delete_date[i]
+        dif=int(datetime.datetime.now().timestamp())-m_date
+        if dif>s.auto_delete_time:#1 час
+            res=delete_message(m_chat_id,m_id)
+            print(res.content.decode("unicode-escape",errors='replace'))
+            s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
+            j=fix_JSON(s_tmp)
+            if "ok" in j:
+                if j["ok"]==True:
+                    print(f"message deleted. id={m_id},date={m_date}")
+                    to_delete_chat_id.pop(i)
+                    to_delete_id.pop(i)
+                    to_delete_date.pop(i)
+                    #мы не хотим проблем с изменённым в цикле списке, поэтому после изменения сразу прекращаем. следующее сообщение, если оно есть, удалим в следующий раз
+                    break
+                else:
+                    print(f"message NOT deleted, [ok]==false. id={m_id},date={m_date}")
+            else:
+                print(f"message NOT deleted, [ok] section absent. id={m_id},date={m_date}")
+    return
+
+
+def make_question(chat_id,res):
+    global active_q,active_q_group
+    answer_callback(chat_id,res["callback_query"]["id"])
+    ans_data=res["callback_query"]["data"].split("|")
+    group_chat_id=int(ans_data[0])
+    if chat_id in failed_tries_chat_id:
+        send_text(chat_id,s.messages["early"].replace("#T",str(s.answer_retry_time)))
+        return
+    if group_chat_id not in s.chats:
+        send_text(chat_id,"Chat NOT found")
+        return
+    q_id=random.randint(0,len(s.chats[group_chat_id]["Q"])-1)+1
+    if q_id not in s.chats[group_chat_id]["Q"]:
+        print(f"key error! {q_id} question not found! check ini file!")
+        return
+    text=s.messages["unmute_question"]+"\n\n"
+    if len(ans_data)>1 and ans_data[1]=="another":
+        text=s.messages["unmute_question_short"]+"\n\n"
+    text+=s.chats[group_chat_id]["Q"][q_id]
+    active_q[chat_id]=q_id
+    active_q_group[chat_id]=group_chat_id
+    send_text(chat_id,text)
+    return
+
+def check_answer(chat_id,res):
+    global active_q, active_q_group
+    global failed_tries_chat_id,failed_tries_date
+    group_chat_id=active_q_group[chat_id]
+    q_id=active_q[chat_id]
+    active_q.pop(chat_id)
+    active_q_group.pop(chat_id)
+    answer=res["message"]["text"].replace("ё","е").replace("Ё","Е").lower()
+    if answer in s.chats[group_chat_id]["A"][q_id]:
+        send_text(chat_id,s.messages["unmute_success"])
+        unrestrict(group_chat_id,chat_id)
+    else:
+        keyboard='{"inline_keyboard":[[{"text":"'+s.messages["again"]+'","callback_data":"'+str(group_chat_id)+'|another"}]]}'
+        send_text(chat_id,s.messages["unmute_fail"].replace("#T",str(s.answer_retry_time)),keyboard)
+        failed_tries_chat_id.append(chat_id)
+        if "date" in res:
+            failed_tries_date.append(res["date"])
+        else:
+            failed_tries_date.append(int(datetime.datetime.now().timestamp()))
+            print("Not found date field in user answer")
+    return
+
+def show_chat_list_numbered(chat_id):
+    text=s.messages["check"]+"\n"
+    n=1
+    for group_chat_id in s.chats.keys():
+        res2=get_chat(group_chat_id)
+        s_tmp=res2.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
+        j=fix_JSON(s_tmp)
+        print(s_tmp.encode("utf-8",errors="replace").decode())
+        if "result" in j and "title" in j["result"]:
+            title=j["result"]["title"]+f" (id: {group_chat_id})"
+        else:
+            title=f"<NO TITLE> (id: {group_chat_id})"
+        res=get_chat_member(group_chat_id,chat_id)
+        print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
+        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
+        j=fix_JSON(s_tmp)
+        if "result" in j and "status" in j["result"]:
+            if j["result"]["status"]=="left":
+                continue
+            text+=f"{n}. "+title+"\n"
+            #text+=j["result"]["status"]+"\n"
+            if j["result"]["status"]=="restricted":
+                if s.chats[group_chat_id]["mute_timer"]==0:
+                    text+=s.messages["mode_restricted_forever"]
+                else:
+                    text+=s.messages["mode_restricted"].replace("#D",str(s.chats[group_chat_id]["mute_timer"]/86400.0))
+            else:
+                text+=s.messages["mode_allowed"]
+        text+="\n\n"
+        n+=1
+    reply=make_starting_keyboard()
+    send_text(chat_id,text,reply=reply)
+    return
+
+def show_chat_list_buttons(chat_id):
+    text=s.messages["unmute"]+"\n"
+    buttons='{"inline_keyboard":['
+    n=1
+    for group_chat_id in s.chats.keys():
+        res=get_chat(group_chat_id)
+        print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
+        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
+        j=fix_JSON(s_tmp)
+        if "result" in j and "title" in j["result"]:
+            title=j["result"]["title"]+f" ({group_chat_id})"
+        else:
+            title=f"<NO TITLE> ({group_chat_id})"
+        res=get_chat_member(group_chat_id,chat_id)
+        print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
+        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
+        j=fix_JSON(s_tmp)
+        if "result" in j and "status" in j["result"]:
+            if j["result"]["status"]=="left":
+                continue
+            buttons+='[{"text":"'+title+'","callback_data":"'+str(group_chat_id)+'"}],'
+    if buttons[-1]==",":
+        buttons=buttons[:-1]
+    buttons+="]}"
+    send_text(chat_id,text,reply=buttons)
+    return
+
+def make_starting_keyboard():
+    button1=s.messages["check_button"]
+    button2=s.messages["unmute_button"]
+    return '{"keyboard":[[{"text":"'+button1+'"},{"text":"'+button2+'"}]],"resize_keyboard":true,"one_time_keyboard":true}'
+
+def greeting(chat_id):
+    reply=make_starting_keyboard()
+    send_text(chat_id,s.messages["greeting"].replace("\\n","\n"),reply=reply)
+
+def notify_unknown_command(chat_id):
+    reply=make_starting_keyboard()
+    send_text(chat_id,s.messages["unknown"].replace("\\n","\n"),reply=reply)
+
+def make_log_record_raw(date_s,res):
+    t=open("messages_log.txt","a",encoding="utf-8",errors="replace")
+    t.write(date_s+": ")
+    txt=json.dumps(res,ensure_ascii=False)
+    json.dump(res,t,ensure_ascii=False)
+    #t.write(txt)
+    t.write("\n")
+    t.close()
+    return
+
+def make_log_record_readable(date_s,chat_id,res):
+    t=open("message_log_readable.txt","a",encoding="utf-8",errors="replace")
+    try:
+        if "message" in res:
+            m=res["message"]
+            type=m["chat"]["type"]
+            from_u=m["from"]["first_name"]
+            text=None
+            if "text" in m:
+                text=m["text"]
+            for rt in rare_types:
+                if rt in m:
+                    text="["+rt+"]"
+            if text is None:
+                text="[Unknown message type]"
+            t.write(f"{date_s}: [{chat_id} ({type})][{from_u}]:{text}\n")
+        if "callback_query" in res:
+            m=res["callback_query"]
+            c_id=res["callback_query"]["id"]
+            from_u=m["from"]["first_name"]
+            data=res["callback_query"]["data"]
+            t.write(f"{date_s}: [{chat_id}][{from_u}]:callback, id={c_id},data={data}\n")
+        if "chat_member" in res:
+            cm=res["chat_member"]
+            user=cm["new_chat_member"]["user"]
+            from_u=user["first_name"]
+            status=cm["new_chat_member"]["status"]
+            t.write(f"{date_s}: [{chat_id}][{from_u}]:chat_member, new_status={status}\n")
+        if "message_reaction" in res:
+            date=res["message_reaction"]["date"]
+            chat_id=res["message_reaction"]["chat"]["id"]
+            from_u="---"
+            if "user"in res["message_reaction"]:
+                user=res["message_reaction"]["user"]
+                from_u=user["first_name"]
+            else:
+                from_u="Unkonwn user"
+            t.write(f"{date_s}: [{chat_id}][{from_u}]:reaction\n")
+
+    except Exception as e:
+        t.write(f"{date_s}: Exception: {str(e)}\n")
+    t.close()
+    return
+
+def react_to_commands(chat_id,res):
+    if "text" in res["message"] and res["message"]["text"].startswith("test1147"):
+        send_text(chat_id,"response784:"+res["message"]["text"][8:])
+        #send_text(chat_id,"\u0421\u0432\u0435\u0442\u043b\u0430\u043d\u0430 \u041c\u0438\u0449\u0435\u043d\u043a\u043e")
+        send_text(chat_id,"testing markdown (v2), this is link exapmle: #[link#]#(https://example.com/#)")
+        return True
+    if "text" in res["message"] and res["message"]["text"].startswith("test_result") and s.owner_id==chat_id:
+        if os.path.exists("output.txt"):
+            send_file(chat_id,"output","output.txt")
+        else:
+            send_text(chat_id,"File absent"+res["message"]["text"][8:])
+        #send_text(chat_id,"\u0421\u0432\u0435\u0442\u043b\u0430\u043d\u0430 \u041c\u0438\u0449\u0435\u043d\u043a\u043e")
+        return True
+    if "text" in res["message"] and res["message"]["text"].startswith("test_command") and s.owner_id==chat_id:
+        normal_path=os.getcwd()
+        os.chdir(s.command_path)
+        command="start cmd /c "+s.command+" ^>\""+normal_path+"\\output.txt\""
+        os.system(command)
+        os.chdir(normal_path)
+        send_text(chat_id,"Command sent")
+        return True
+    return False
+
+def check_reactions_from_restricted(chat_id,res):
+    global reactions_from_restricted
+    if "user" not in res["message_reaction"]:#anonymous reaction
+        return
+    user=res["message_reaction"]["user"]
+    reaction_count=len(res["message_reaction"]["new_reaction"])
+    uid=user["id"]
+    name=user["first_name"]
+    if "last_name" in user:
+        name+=" "+user["last_name"]
+    if "username" in user:
+        name+=" ("+user["username"]+")"
+    res=get_chat_member(chat_id,uid)
+    print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
+    s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
+    j=fix_JSON(s_tmp)
+    if "result" in j and "status" in j["result"]:
+        if j["result"]["status"]=="restricted":#restricted user makes reactions!
+            if reaction_count==0:
+                return#reaction removed, don't increase counter
+            index=str(chat_id)+"|"+str(uid)
+            id_link="#[профиль#]#(tg://user?id="+str(uid)+"#)"
+            if index not in reactions_from_restricted:
+                reactions_from_restricted[index]=1
+            else:
+                reactions_from_restricted[index]+=1
+            n_reactions=reactions_from_restricted[index]
+            print(f"reaction made from restricted user: {uid}, N={n_reactions}")
+            if int(s.chats[chat_id]["reactions_max"])==0:
+                return
+            if n_reactions>int(s.chats[chat_id]["reactions_max"]):
+                ban(chat_id,uid,0)
+                send_text(chat_id,s.chats[chat_id]["MSG"]["ban"].replace("#N",name).replace("#I",id_link).replace("\\n","\n"))
+                reactions_from_restricted[index]=0
+                return
+            if n_reactions==int(s.chats[chat_id]["reactions_final_warning"]):
+                send_text(chat_id,s.chats[chat_id]["MSG"]["reactions_final_warning"].replace("#N",name).replace("#I",id_link).replace("\\n","\n"))
+                return
+            if n_reactions==int(s.chats[chat_id]["reactions_warning"]):
+                send_text(chat_id,s.chats[chat_id]["MSG"]["reactions_warning"].replace("#N",name).replace("#I",id_link).replace("\\n","\n"))
+                return
+    return
+
+def check_new_member(date,chat_id,res,c_s):
+    global to_delete_chat_id,to_delete_id,to_delete_date
+    cm=res["chat_member"]
+    user=cm["new_chat_member"]["user"]
+    status=cm["new_chat_member"]["status"]
+    is_member=False
+    if status=="restricted":
+        is_member=cm["new_chat_member"]["is_member"]
+        print(f"is_member:{is_member}")
+    if status=="member" or (status=="restricted" and is_member):#второе -- зашёл уже замьюченный пользователь. продлеваем мьют
+        print("new member!")
+        uid=user["id"]
+        uid_from=cm["from"]["id"]
+        name=user["first_name"]
+        if "last_name" in user:
+            name+=" "+user["last_name"]
+        if "username" in user:
+            name+=" ("+user["username"]+")"
+        #name=name.encode("unicode-escape").decode()
+        if uid==uid_from:#настоящий вход
+            message=c_s["MSG"]["hello"]
+            id_link="#[профиль#]#(tg://user?id="+str(uid)+"#)"
+            message=message.replace("#N",name).replace("#I",id_link).replace("\\n","\n")
+            print(message)
+            res=send_text(chat_id,message)
+            print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
+            s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
+            j=fix_JSON(s_tmp)
+            if "result" in j:
+                result=j["result"]
+                to_delete_chat_id.append(chat_id)
+                print(f"added to queue (chat_id):{chat_id}")
+                if "message_id" in result:
+                    to_delete_id.append(result["message_id"])
+                    print(f"added to queue:{result['message_id']}")
+                else:
+                    print("not found in result: message_id")
+                if "date" in result:
+                    to_delete_date.append(result["date"])
+                    print(f"added to queue (date):{result['date']}")
+                else:
+                    print("not found in result: date")
+            else:
+                print("not found in result: result")
+            actual_mute=True
+            if (status=="restricted" and is_member):#new member is already muted, we must check current timer
+                limit=int(cm["new_chat_member"]["until_date"])
+                print(f"limit: {limit}, date: {date}, timer:{c_s['mute_timer']}")
+                if limit>int(date)+c_s["mute_timer"]:
+                    actual_mute=False
+            if actual_mute:
+                res=restrict(chat_id,int(uid),int(date)+c_s["mute_timer"])#7 дней
+                print("restricted: "+res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
+            else:
+                print("Current mute limit is greater than new member mute limit, so limit will not be decreased. Skipping...")
+        else:#разбан
+            if status=="member":
+                message=c_s["MSG"]["unban"]
+                message=message.replace("#N",name).replace("\\n","\n")
+                print(message)
+                send_text(chat_id,message)
+            else:
+                pass#кого-то забанили или он получил новые ограничения. не будем выводить сообщений
+    return
+
 
 if __name__=="__main__":
-    to_delete_chat_id=[]
-    to_delete_id=[]
-    to_delete_date=[]
-
-    failed_tries_chat_id=[]
-    failed_tries_date=[]
-    active_q=dict()
-    active_q_group=dict()
-    reactions_from_restricted=dict()
-    q_id=0
     s.load()
     init(s.token)
     id=-1
@@ -28,36 +397,9 @@ if __name__=="__main__":
     while(1):
         print("begin poll pause...",end="")
         time.sleep(s.poll_pause)
-        print("done")
-
-        for i in range(len(failed_tries_chat_id)):
-            m_date=failed_tries_date[i]
-            dif=int(datetime.datetime.now().timestamp())-m_date
-            if dif>s.answer_retry_time:
-                failed_tries_chat_id.pop(i)
-                failed_tries_date.pop(i)
-        for i in range(len(to_delete_id)):
-            m_chat_id=to_delete_chat_id[i]
-            m_id=to_delete_id[i]
-            m_date=to_delete_date[i]
-            dif=int(datetime.datetime.now().timestamp())-m_date
-            if dif>s.auto_delete_time:#1 час
-                res=delete_message(m_chat_id,m_id)
-                print(res.content.decode("unicode-escape",errors='replace'))
-                s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
-                j=fix_JSON(s_tmp)
-                if "ok" in j:
-                    if j["ok"]==True:
-                        print(f"message deleted. id={m_id},date={m_date}")
-                        to_delete_chat_id.pop(i)
-                        to_delete_id.pop(i)
-                        to_delete_date.pop(i)
-                        #мы не хотим проблем с изменённым в цикле списке, поэтому после изменения сразу прекращаем. следующее сообщение, если оно есть, удалим в следующий раз
-                        break
-                    else:
-                        print(f"message NOT deleted, [ok]==false. id={m_id},date={m_date}")
-                else:
-                    print(f"message NOT deleted, [ok] section absent. id={m_id},date={m_date}")
+        print("done", end="")
+        process_timeout_wrong_answer()
+        process_timeout_greeting()
         update_list=[]
         res=dict()
         (update_list,id_new)=(get_updates(id+1))
@@ -81,29 +423,19 @@ if __name__=="__main__":
             if "message" in res:
                 date=res["message"]["date"]
                 chat_id=res["message"]["chat"]["id"]
-                if "text" in res["message"] and res["message"]["text"].startswith("test1147"):
-                    send_text(chat_id,"response784:"+res["message"]["text"][8:])
-                    #send_text(chat_id,"\u0421\u0432\u0435\u0442\u043b\u0430\u043d\u0430 \u041c\u0438\u0449\u0435\u043d\u043a\u043e")
-                    send_text(chat_id,"testing markdown (v2), this is link exapmle: #[link#]#(https://example.com/#)")
-                    continue
-                if "text" in res["message"] and res["message"]["text"].startswith("test_result") and s.owner_id==chat_id:
-                    if os.path.exists("output.txt"):
-                        send_file(chat_id,"output","output.txt")
-                    else:
-                        send_text(chat_id,"File absent"+res["message"]["text"][8:])
-                    #send_text(chat_id,"\u0421\u0432\u0435\u0442\u043b\u0430\u043d\u0430 \u041c\u0438\u0449\u0435\u043d\u043a\u043e")
-                    continue
-                if "text" in res["message"] and res["message"]["text"].startswith("test_command") and s.owner_id==chat_id:
-                    normal_path=os.getcwd()
-                    os.chdir(s.command_path)
-                    command="start cmd /c "+s.command+" ^>\""+normal_path+"\\output.txt\""
-                    os.system(command)
-                    os.chdir(normal_path)
-                    send_text(chat_id,"Command sent")
+                reacted=react_to_commands(chat_id,res)
+                if reacted:
                     continue
             if "message_reaction" in res:
                 date=res["message_reaction"]["date"]
                 chat_id=res["message_reaction"]["chat"]["id"]
+                print("old:"+str(res["message_reaction"]["old_reaction"]))
+                print("new:"+str(res["message_reaction"]["new_reaction"]))
+                if len(res["message_reaction"]["old_reaction"])==0:
+                    print("reaction set")
+                if len(res["message_reaction"]["new_reaction"])==0:
+                    print("reaction removed")
+
             if "chat_member" in res:
                 date=res["chat_member"]["date"]
                 chat_id=res["chat_member"]["chat"]["id"]
@@ -113,308 +445,53 @@ if __name__=="__main__":
 
             date_s=datetime.datetime.fromtimestamp(date).strftime("%Y-%m-%dT%H:%M:%S")#ftime.strftime("%B %d %Y", str(date))
             print(f"update_id={id}, {date_s}")
-            t=open("messages_log.txt","a",encoding="utf-8",errors="replace")
-            txt=json.dumps(res,ensure_ascii=False)
-            json.dump(res,t,ensure_ascii=False)
-            #t.write(txt)
-            t.write("\n")
-            t.close()
-            t=open("message_log_readable.txt","a",encoding="utf-8",errors="replace")
-            try:
-                if "message" in res:
-                    m=res["message"]
-                    type=m["chat"]["type"]
-                    from_u=m["from"]["first_name"]
-                    text=None
-                    rare_types=["animation",
-                        "audio",
-                        "document",
-                        "photo",
-                        "sticker",
-                        "story",
-                        "video",
-                        "video_note",
-                        "voice",
-                        "checklist",
-                        "contact",
-                        "dice",
-                        "game",
-                        "poll",
-                        "venue",
-                        "location",
-                        "invoice",
-                        "successful_payment",
-                        "refunded_payment",
-                        "giveaway",
-                        "new_chat_members",
-                        "left_chat_member",
-                        "new_chat_title",
-                        "new_chat_photo"
-                        ]
-                    if "text" in m:
-                        text=m["text"]
-                    for rt in rare_types:
-                        if rt in m:
-                            text="["+rt+"]"
-                    if text is None:
-                        text="[Unknown message type]"
-                    t.write(f"{date_s}: [{chat_id} ({type})][{from_u}]:{text}\n")
-                if "callback_query" in res:
-                    c_id=res["callback_query"]["id"]
-                    from_u=m["from"]["first_name"]
-                    data=res["callback_query"]["data"]
-                    t.write(f"{date_s}: [{chat_id}][{from_u}]:callback, id={c_id},data={data}\n")
-                if "chat_member" in res:
-                    cm=res["chat_member"]
-                    user=cm["new_chat_member"]["user"]
-                    from_u=user["first_name"]
-                    status=cm["new_chat_member"]["status"]
-                    t.write(f"{date_s}: [{chat_id}][{from_u}]:chat_member, new_status={status}\n")
-                if "message_reaction" in res:
-                    date=res["message_reaction"]["date"]
-                    chat_id=res["message_reaction"]["chat"]["id"]
-                    from_u="---"
-                    if "user"in res["message_reaction"]:
-                        user=res["message_reaction"]["user"]
-                        from_u=user["first_name"]
-                    else:
-                        from_u="Unkonwn user"
-                    t.write(f"{date_s}: [{chat_id}][{from_u}]:reaction\n")
-
-            except:
-                t.write(f"{date}: Exception\n")
-            t.close()
+            make_log_record_raw(date_s,res)
+            make_log_record_readable(date_s,chat_id,res)
 
             if "message" in res and res["message"]["chat"]["type"]=="private":
                 if "text" not in res["message"]:
                     continue
                 if chat_id in active_q:#мы задали вопрос
-                    group_chat_id=active_q_group[chat_id]
-                    q_id=active_q[chat_id]
-                    active_q.pop(chat_id)
-                    active_q_group.pop(chat_id)
-                    answer=res["message"]["text"].replace("ё","е").replace("Ё","Е").lower()
-                    if answer in s.chats[group_chat_id]["A"][q_id]:
-                        send_text(chat_id,s.messages["unmute_success"])
-                        unrestrict(group_chat_id,chat_id)
-                    else:
-                        keyboard='{"inline_keyboard":[[{"text":"'+s.messages["again"]+'","callback_data":"'+str(group_chat_id)+'|another"}]]}'
-                        send_text(chat_id,s.messages["unmute_fail"].replace("#T",str(s.answer_retry_time)),keyboard)
-                        failed_tries_chat_id.append(chat_id)
-                        if "date" in res:
-                            failed_tries_date.append(res["date"])
-                        else:
-                            failed_tries_date.append(int(datetime.datetime.now().timestamp()))
-                            print("Not found date field in user answer")
-
+                    check_answer(chat_id,res)
                     continue
                 #тут будет вся обработка лички (кроме коллбека)
                 if res["message"]["text"]=="/start":
-                    button1=s.messages["check_button"]
-                    button2=s.messages["unmute_button"]
-                    reply='{"keyboard":[[{"text":"'+button1+'"},{"text":"'+button2+'"}]],"resize_keyboard":true}'
-                    send_text(chat_id,s.messages["greeting"].replace("\\n","\n"),reply=reply)
+                    greeting(chat_id)
                     continue
                 if res["message"]["text"]==s.messages["check_button"]:
-                    text=s.messages["check"]+"\n"
-                    n=1
-                    for group_chat_id in s.chats.keys():
-                        res2=get_chat(group_chat_id)
-                        s_tmp=res2.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
-                        j=fix_JSON(s_tmp)
-                        print(s_tmp.encode("utf-8",errors="replace").decode())
-                        if "result" in j and "title" in j["result"]:
-                            title=j["result"]["title"]+f" (id: {group_chat_id})"
-                        else:
-                            title=f"<NO TITLE> (id: {group_chat_id})"
-                        res=get_chat_member(group_chat_id,chat_id)
-                        print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
-                        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
-                        j=fix_JSON(s_tmp)
-                        if "result" in j and "status" in j["result"]:
-                            if j["result"]["status"]=="left":
-                                continue
-                            text+=f"{n}. "+title+"\n"
-                            #text+=j["result"]["status"]+"\n"
-                            if j["result"]["status"]=="restricted":
-                                if s.chats[group_chat_id]["mute_timer"]==0:
-                                    text+=s.messages["mode_restricted_forever"]
-                                else:
-                                    text+=s.messages["mode_restricted"].replace("#D",str(s.chats[group_chat_id]["mute_timer"]/86400.0))
-                            else:
-                                text+=s.messages["mode_allowed"]
-                        text+="\n\n"
-                        n+=1
-                    send_text(chat_id,text)
+                    show_chat_list_numbered(chat_id)
                     continue
                 if res["message"]["text"]==s.messages["unmute_button"]:
-                    text=s.messages["unmute"]+"\n"
-                    buttons='{"inline_keyboard":['
-                    n=1
-                    for group_chat_id in s.chats.keys():
-                        res=get_chat(group_chat_id)
-                        print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
-                        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
-                        j=fix_JSON(s_tmp)
-                        if "result" in j and "title" in j["result"]:
-                            title=j["result"]["title"]+f" ({group_chat_id})"
-                        else:
-                            title=f"<NO TITLE> ({group_chat_id})"
-                        res=get_chat_member(group_chat_id,chat_id)
-                        print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
-                        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
-                        j=fix_JSON(s_tmp)
-                        if "result" in j and "status" in j["result"]:
-                            if j["result"]["status"]=="left":
-                                continue
-                            buttons+='[{"text":"'+title+'","callback_data":"'+str(group_chat_id)+'"}],'
-                    if buttons[-1]==",":
-                        buttons=buttons[:-1]
-                    buttons+="]}"
-                    send_text(chat_id,text,reply=buttons)
+                    show_chat_list_buttons(chat_id)
                     continue
                 if True:#все остальные сообщения
-                    button1=s.messages["check_button"]
-                    button2=s.messages["unmute_button"]
-                    reply='{"keyboard":[[{"text":"'+button1+'"},{"text":"'+button2+'"}]],"resize_keyboard":true}'
-                    send_text(chat_id,s.messages["unknown"].replace("\\n","\n"),reply=reply)
+                    notify_unknown_command(chat_id)
                     continue
 
                 
                 continue#дальнейшая обработка не имеет смысла
 
             if "callback_query" in res:
-                answer_callback(chat_id,res["callback_query"]["id"])
-                ans_data=res["callback_query"]["data"].split("|")
-                group_chat_id=int(ans_data[0])
-                if chat_id in failed_tries_chat_id:
-                    send_text(chat_id,s.messages["early"].replace("#T",str(s.answer_retry_time)))
-                    continue
-                if group_chat_id not in s.chats:
-                    send_text(chat_id,"Chat NOT found")
-                    continue
-                q_id=random.randint(0,len(s.chats[group_chat_id]["Q"])-1)+1
-                if q_id not in s.chats[group_chat_id]["Q"]:
-                    print(f"key error! {q_id} question not found! check ini file!")
-                    continue
-                text=s.messages["unmute_question"]+"\n\n"
-                if len(ans_data)>1 and ans_data[1]=="another":
-                    text=s.messages["unmute_question_short"]+"\n\n"
-                text+=s.chats[group_chat_id]["Q"][q_id]
-                active_q[chat_id]=q_id
-                active_q_group[chat_id]=group_chat_id
-                send_text(chat_id,text)
+                make_question(chat_id,res)
                 continue
         
             if "message_reaction" in res:
                 date=res["message_reaction"]["date"]
                 chat_id=res["message_reaction"]["chat"]["id"]
-                if "user" not in res["message_reaction"]:#anonymous reaction
-                    continue
-                user=res["message_reaction"]["user"]
-                uid=user["id"]
-                name=user["first_name"]
-                if "last_name" in user:
-                    name+=" "+user["last_name"]
-                if "username" in user:
-                    name+=" ("+user["username"]+")"
-                res=get_chat_member(chat_id,uid)
-                print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
-                s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
-                j=fix_JSON(s_tmp)
-                if "result" in j and "status" in j["result"]:
-                    if j["result"]["status"]=="restricted":#restricted user makes reactions!
-                        index=str(chat_id)+"|"+str(uid)
-                        if index not in reactions_from_restricted:
-                            reactions_from_restricted[index]=1
-                        else:
-                            reactions_from_restricted[index]+=1
-                        n_reactions=reactions_from_restricted[index]
-                        print(f"reaction made from restricted user: {uid}, N={n_reactions}")
-                        if int(s.chats[chat_id]["reactions_max"])==0:
-                            continue
-                        if n_reactions>int(s.chats[chat_id]["reactions_max"]):
-                            ban(chat_id,uid,0)
-                            send_text(chat_id,s.chats[chat_id]["MSG"]["ban"].replace("#N",name).replace("\\n","\n"))
-                            reactions_from_restricted[index]=0
-                            continue
-                        if n_reactions==int(s.chats[chat_id]["reactions_final_warning"]):
-                            send_text(chat_id,s.chats[chat_id]["MSG"]["reactions_final_warning"].replace("#N",name).replace("\\n","\n"))
-                            continue
-                        if n_reactions==int(s.chats[chat_id]["reactions_warning"]):
-                            send_text(chat_id,s.chats[chat_id]["MSG"]["reactions_warning"].replace("#N",name).replace("\\n","\n"))
-                            continue
-
+                check_reactions_from_restricted(chat_id,res)
                     
 
             #остались группы и супергруппы (а может и ещё что, т.к. по документации это непонятно)
             c_s=dict()
-            s.load_chat_settings(chat_id)
+            if chat_id not in s.chats:
+                s.load_chat_settings(chat_id)
+                #это может быть первый вход в новый чат, тогда настроечного файла ещё не существует и нужно взять по-умолчанию
             c_s=s.chats[chat_id]
             if c_s["ignore"]==True:
                 print(f"ignoring message from chat {chat_id}")
-                time.sleep(s.poll_pause)
                 continue#чат не входит в число обслуживаемых. личка не считается
 
             if "chat_member" in res:
-                cm=res["chat_member"]
-                user=cm["new_chat_member"]["user"]
-                status=cm["new_chat_member"]["status"]
-                is_member=False
-                if status=="restricted":
-                    is_member=cm["new_chat_member"]["is_member"]
-                    print(f"is_member:{is_member}")
-                if status=="member" or (status=="restricted" and is_member):#второе -- зашёл уже замьюченный пользователь. продлеваем мьют
-                    print("new member!")
-                    uid=user["id"]
-                    uid_from=cm["from"]["id"]
-                    name=user["first_name"]
-                    if "last_name" in user:
-                        name+=" "+user["last_name"]
-                    if "username" in user:
-                        name+=" ("+user["username"]+")"
-                    #name=name.encode("unicode-escape").decode()
-                    if uid==uid_from:#настоящий вход
-                        message=c_s["MSG"]["hello"]
-                        id_link="#[профиль#]#(tg://user?id="+str(uid)+"#)"
-                        message=message.replace("#N",name).replace("#I",id_link).replace("\\n","\n")
-                        print(message)
-                        res=send_text(chat_id,message)
-                        print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
-                        s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
-                        j=fix_JSON(s_tmp)
-                        if "result" in j:
-                            result=j["result"]
-                            to_delete_chat_id.append(chat_id)
-                            print(f"added to queue (chat_id):{chat_id}")
-                            if "message_id" in result:
-                                to_delete_id.append(result["message_id"])
-                                print(f"added to queue:{result['message_id']}")
-                            else:
-                                print("not found in result: message_id")
-                            if "date" in result:
-                                to_delete_date.append(result["date"])
-                                print(f"added to queue (date):{result['date']}")
-                            else:
-                                print("not found in result: date")
-                        else:
-                            print("not found in result: result")
-                        actual_mute=True
-                        if (status=="restricted" and is_member):#new member is already muted, we must check current timer
-                            limit=int(cm["new_chat_member"]["until_date"])
-                            print(f"limit: {limit}, date: {date}, timer:{c_s['mute_timer']}")
-                            if limit>int(date)+c_s["mute_timer"]:
-                                actual_mute=False
-                        if actual_mute:
-                            res=restrict(chat_id,int(uid),int(date)+c_s["mute_timer"])#7 дней
-                            print("restricted: "+res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
-                        else:
-                            print("Current mute limit is greater than new member mute limit, so limit will not be decreased. Skippings...")
-                    else:#разбан
-                        if status=="member":
-                            message=c_s["MSG"]["unban"]
-                            message=message.replace("#N",name).replace("\\n","\n")
-                            print(message)
-                            send_text(chat_id,message)
-                        else:
-                            pass#кого-то забанили или он получил новые ограничения. не будем выводить сообщений
+                check_new_member(date,chat_id,res,c_s)
+        
+        continue#конец цикла
