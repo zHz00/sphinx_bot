@@ -18,6 +18,7 @@ answer_retry_time=30
 chats_folder="chats/"
 default_file="default.ini"
 ignore_file="ignore.ini"
+log_readable="message_log_readable.txt"
 
 proxy_ip=""
 proxy_port=""

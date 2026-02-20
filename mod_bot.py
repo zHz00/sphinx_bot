@@ -212,7 +212,7 @@ def make_log_record_raw(date_s,res):
     return
 
 def make_log_record_readable(date_s,chat_id,res):
-    t=open("message_log_readable.txt","a",encoding="utf-8",errors="replace")
+    t=open(s.log_readable,"a",encoding="utf-8",errors="replace")
     try:
         if "message" in res:
             m=res["message"]
@@ -255,7 +255,62 @@ def make_log_record_readable(date_s,chat_id,res):
     t.close()
     return
 
-def react_to_commands(chat_id,res):
+#page=0: last page
+#page=1: previous page
+#page number increasing towards beginning of file
+def send_log_readable(chat_id,page,page_size=65536):
+    size=os.path.getsize(s.log_readable)
+    pos=page_size*(page+2)
+    if pos>size:
+        pos=size
+    t=open(s.log_readable,"rb")
+    to_read=page_size*2
+    if to_read>size:
+        to_read=size
+    t.seek(-pos,os.SEEK_END)
+    data=t.read(to_read)
+    t.close()
+    if size>page_size:
+        search_end=len(data)-page_size
+    else:
+        search_end=page_size
+    index=data.rfind(b'\n',0,search_end)
+    if index==-1:
+        index=0
+    out_data="DUMMY"
+    while data[index]>127:#we somehow find ourself in the middle of the character
+        index+=1
+        if index>to_read:
+            #for unknown reason, all bytes are invalid
+            out_data="INVALID UNICODE"
+    try:
+        out_data=data[index:].decode("utf-8",errors='ignore')
+    except Exception as e:
+        out_data="INVALID UNICODE: "+str(e)
+    out_data=out_data.replace("\r\n","\n")#for windows
+    date=datetime.datetime.now().timestamp()
+    date_s=datetime.datetime.fromtimestamp(date).strftime("%Y-%m-%dT%H-%M-%S")
+    filename=f"logs-{date_s}-p{str(page)}.txt"
+    t=open(filename,"w",encoding="utf-8")
+    t.write(out_data)
+    t.close()
+    send_file(chat_id,f"page {page} from end",filename)
+    os.remove(filename)
+    return
+
+
+    #while ch!="\n":
+        #ch=t.read(1)
+
+def react_to_public_commands(chat_id,res):
+    if "text" in res["message"] and res["message"]["text"].startswith("test1147"):
+        send_text(chat_id,"response785:"+res["message"]["text"][8:])
+        #send_text(chat_id,"\u0421\u0432\u0435\u0442\u043b\u0430\u043d\u0430 \u041c\u0438\u0449\u0435\u043d\u043a\u043e")
+        send_text(chat_id,"testing markdown (v2), this is link exapmle: #[link#]#(https://example.com/#)")
+        return True
+    return False
+
+def react_to_private_commands(chat_id,res):
     if "text" in res["message"] and res["message"]["text"].startswith("test1147"):
         send_text(chat_id,"response784:"+res["message"]["text"][8:])
         #send_text(chat_id,"\u0421\u0432\u0435\u0442\u043b\u0430\u043d\u0430 \u041c\u0438\u0449\u0435\u043d\u043a\u043e")
@@ -275,6 +330,16 @@ def react_to_commands(chat_id,res):
         os.system(command)
         os.chdir(normal_path)
         send_text(chat_id,"Command sent")
+        return True
+    if "text" in res["message"] and res["message"]["text"].startswith("logs") and s.owner_id==chat_id:
+        params=res["message"]["text"].split(" ")
+        page=0
+        if len(params)>1:
+            try:
+                page=int(params[1])
+            except:
+                pass
+        send_log_readable(chat_id,page)
         return True
     return False
 
@@ -423,9 +488,6 @@ if __name__=="__main__":
             if "message" in res:
                 date=res["message"]["date"]
                 chat_id=res["message"]["chat"]["id"]
-                reacted=react_to_commands(chat_id,res)
-                if reacted:
-                    continue
             if "message_reaction" in res:
                 date=res["message_reaction"]["date"]
                 chat_id=res["message_reaction"]["chat"]["id"]
@@ -448,11 +510,21 @@ if __name__=="__main__":
             make_log_record_raw(date_s,res)
             make_log_record_readable(date_s,chat_id,res)
 
+            if "message" in res and res["message"]["chat"]["type"]!="private":#public commands
+                if "text" not in res["message"]:
+                    continue
+                reacted=react_to_public_commands(chat_id,res)
+                if reacted:
+                    continue
+
             if "message" in res and res["message"]["chat"]["type"]=="private":
                 if "text" not in res["message"]:
                     continue
                 if chat_id in active_q:#мы задали вопрос
                     check_answer(chat_id,res)
+                    continue
+                reacted=react_to_private_commands(chat_id,res)
+                if reacted:
                     continue
                 #тут будет вся обработка лички (кроме коллбека)
                 if res["message"]["text"]=="/start":
