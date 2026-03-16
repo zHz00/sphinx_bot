@@ -2,6 +2,7 @@ import requests
 import json
 import time
 import settings as s
+import datetime
 
 
 __token=""
@@ -47,8 +48,9 @@ def send_text(chat_id,text,reply="",preview=True,tries=3):
     url=req_prefix+__token+"/sendMessage"
     #print("url:"+url)
     #print("text:"+text)
+    date_s=datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     t=open("message_log_readable.txt","a",encoding="utf-8",errors="replace")
-    t.write(f"Sending text:{chat_id},{text}\nreply=[{reply}]\n")
+    t.write(f"{date_s}: Sending text:{chat_id},{text}\nreply=[{reply}]\n")
     t.close()
     try:
         res=requests.post(url,data=data,proxies=s.get_proxies())
@@ -81,15 +83,15 @@ def fix_JSON(json_message=None):
         return fix_JSON(json_message=new_message)
     return result
 
-def get_updates(id=0):
+def get_updates(timeout=5,id=0):
     global request_idx
     request_idx+=1
-    data={"limit":100,"allowed_updates":'["message","message_reaction","chat_member","callback_query","voice"]',"timeout":s.poll_wait_timeout}
+    data={"limit":100,"allowed_updates":'["message","message_reaction","chat_member","callback_query","voice"]',"timeout":timeout}
     if id!=0:
         data["offset"]=id
     url=req_prefix+__token+"/getUpdates"
     try:
-        res=requests.post(url,data=data,proxies=s.get_proxies(),timeout=s.poll_wait_timeout+2)
+        res=requests.post(url,data=data,proxies=s.get_proxies(),timeout=timeout+2)
     except Exception as e:      
         print(f"Request error [{str(e)}]! Wait 60 (idx:{request_idx})")
         time.sleep(60)
@@ -216,7 +218,7 @@ def delete_message(chat_id,message_id,tries=3):
         print("error with request (deleteMessage). pause")
         time.sleep(s.poll_error_pause)
         if tries>0:
-            return restrict(chat_id,message_id,tries-1)
+            return delete_message(chat_id,message_id,tries-1)
         else:
             return []
     return res

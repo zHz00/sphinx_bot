@@ -76,6 +76,11 @@ def process_timeout_greeting():
                     break
                 else:
                     print(f"message NOT deleted, [ok]==false. id={m_id},date={m_date}")
+                    to_delete_chat_id.pop(i)
+                    to_delete_id.pop(i)
+                    to_delete_date.pop(i)
+                    #if ok==false then no such message exists. removing from list
+                    break
             else:
                 print(f"message NOT deleted, [ok] section absent. id={m_id},date={m_date}")
     return
@@ -314,7 +319,13 @@ def react_to_private_commands(chat_id,res):
     if "text" in res["message"] and res["message"]["text"].startswith("test1147"):
         send_text(chat_id,"response784:"+res["message"]["text"][8:])
         #send_text(chat_id,"\u0421\u0432\u0435\u0442\u043b\u0430\u043d\u0430 \u041c\u0438\u0449\u0435\u043d\u043a\u043e")
-        send_text(chat_id,"testing markdown (v2), this is link exapmle: #[link#]#(https://example.com/#)")
+        #send_text(chat_id,"testing markdown (v2), this is link exapmle: #[link1#]#(https://example.com/#)")
+        send_text(chat_id,"testing markdown (v2), this is link exapmle: #[link1#]#(https://example.com/#), #[link2#]#(tg://user?id=8365073499#)")
+        return True
+    if "text" in res["message"] and res["message"]["text"].startswith("profile"):
+        param_list=res["message"]["text"].split(" ")
+        param=0 if len(param_list)!=2 else param_list[1]
+        send_text(chat_id,f"Profile link: #[link#]#(tg://user?id={param}#)")
         return True
     if "text" in res["message"] and res["message"]["text"].startswith("test_result") and s.owner_id==chat_id:
         if os.path.exists("output.txt"):
@@ -467,7 +478,12 @@ if __name__=="__main__":
         process_timeout_greeting()
         update_list=[]
         res=dict()
-        (update_list,id_new)=(get_updates(id+1))
+        timeout=5#default
+        if len(queue_member)>0:
+            timeout=s.poll_pause#if we have non-empty queue, don't wait full timeout. we have to manage the queue
+        else:
+            timeout=s.poll_wait_timeout
+        (update_list,id_new)=(get_updates(timeout=timeout,id=(id+1)))
         if id_new!=-1:
             id=id_new
         #if res.contents!=""

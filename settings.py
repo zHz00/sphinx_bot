@@ -1,6 +1,6 @@
 import configparser
 import shutil
-from os import listdir
+import os
 
 poll_pause=15
 poll_wait_timeout=15
@@ -19,6 +19,8 @@ chats_folder="chats/"
 default_file="default.ini"
 ignore_file="ignore.ini"
 log_readable="message_log_readable.txt"
+settings_file="settings_global.ini"
+settings_file_default="settings_global_default.ini"
 
 proxy_ip=""
 proxy_port=""
@@ -40,11 +42,16 @@ def load():
     global proxy_ip,proxy_port,proxy_user,proxy_pass
     global answer_retry_time
 
+    if os.path.isfile(settings_file)==False:
+        #new installation
+        shutil.copy(settings_file_default,settings_file)
+
+
     c=configparser.ConfigParser()
     try:
-        c.read("settings_global.ini",encoding="utf-8")
+        c.read(settings_file,encoding="utf-8")
     except:
-        c.read("settings_global.ini",encoding="utf-8-sig")
+        c.read(settings_file,encoding="utf-8-sig")
     new_chats_allowed=bool(c["COMMON"]["new_chats_allowed"])
     poll_pause=int(c["COMMON"]["poll_pause"])
     poll_wait_timeout=int(c["COMMON"]["poll_wait_timeout"])
@@ -53,8 +60,37 @@ def load():
     answer_retry_time=int(c["COMMON"]["answer_retry_time"])
     command=c["COMMON"]["command"]
     command_path=c["COMMON"]["command_path"]
+    try:
+        owner_id=int(c["COMMON"]["owner_id"])
+    except:
+        owner_id=int(input("It seems that you have new installation. Please enter bot owner id or zero to skip:"))
+        c["COMMON"]["owner_id"]=str(owner_id)
+        f=open(settings_file,"w",encoding="utf-8")
+        c.write(f)
+        f.close()
+        print("Written to file.")
+
     token=c["COMMON"]["token"]
-    owner_id=int(c["COMMON"]["owner_id"])
+    if token=="XXXX" or len(token)==0:#new installation
+        token=input("It seems that you have new installation. Please enter telegram bot token:")
+        c["COMMON"]["token"]=token
+        proxy_set=input("Set proxy settings?(y/n):")
+        proxy_set=proxy_set.lower()
+        if proxy_set=="y":
+            print("Now you will be asked about proxy settings, which takes 4 steps. If you don't know an answer, press Enter.")
+            print("Only SOCKS 5 proxies are supported. You can change settings later by editing file "+settings_file)
+            proxy_ip=input("(1/4) Enter proxy IP address or domain name:")
+            proxy_port=input("(2/4) Enter port:")
+            proxy_user=input("(3/4) Enter username (Enter if none):")
+            proxy_pass=input("(4/4) Enter proxy password. WARNING! This will be saved as unencrypted text! (Enter if none):")
+            c["PROXY"]["ip"]=proxy_ip
+            c["PROXY"]["port"]=proxy_port
+            c["PROXY"]["user"]=proxy_user
+            c["PROXY"]["pass"]=proxy_pass
+        f=open(settings_file,"w",encoding="utf-8")
+        c.write(f)
+        f.close()
+        print("Written to file.")
     messages=dict()
     for m in c["MESSAGES"]:
         messages[m]=c["MESSAGES"][m]
@@ -64,7 +100,7 @@ def load():
     proxy_user=c["PROXY"]["user"]
     proxy_pass=c["PROXY"]["pass"]
 
-    file_list=listdir(chats_folder)
+    file_list=os.listdir(chats_folder)
     id=0
     for file in file_list:
         if file==default_file or file==ignore_file:
