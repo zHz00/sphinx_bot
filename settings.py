@@ -14,13 +14,15 @@ owner_id=0
 command="uname -a"
 command_path="."
 answer_retry_time=30
+language="en"
 
 chats_folder="chats/"
-default_file="default.ini"
-ignore_file="ignore.ini"
+default_file_prefix="default_"
+ignore_file_prefix="ignore_"
 log_readable="message_log_readable.txt"
 settings_file="settings_global.ini"
-settings_file_default="settings_global_default.ini"
+settings_file_default_prefix="settings_global_default_"
+ini_suffix=".ini"
 
 proxy_ip=""
 proxy_port=""
@@ -41,10 +43,21 @@ def load():
     global command_path
     global proxy_ip,proxy_port,proxy_user,proxy_pass
     global answer_retry_time
+    global language
 
     if os.path.isfile(settings_file)==False:
         #new installation
-        shutil.copy(settings_file_default,settings_file)
+        langs=[]
+        files=os.listdir(".")
+        for file in files:
+            if file.startswith(settings_file_default_prefix):
+                langs.append(file.removeprefix(settings_file_default_prefix).removesuffix(ini_suffix))
+        print("Select default language for bot. Available languages: ",end="")
+        print(", ".join(langs))
+        lang="/"
+        while lang not in langs:
+            lang=input("Enter language code:")
+        shutil.copy(settings_file_default_prefix+lang+ini_suffix,settings_file)
 
 
     c=configparser.ConfigParser()
@@ -60,6 +73,7 @@ def load():
     answer_retry_time=int(c["COMMON"]["answer_retry_time"])
     command=c["COMMON"]["command"]
     command_path=c["COMMON"]["command_path"]
+    language=c["COMMON"]["language"]
     try:
         owner_id=int(c["COMMON"]["owner_id"])
     except:
@@ -72,13 +86,13 @@ def load():
 
     token=c["COMMON"]["token"]
     if token=="XXXX" or len(token)==0:#new installation
-        token=input("It seems that you have new installation. Please enter telegram bot token:")
+        token=input("It seems that you have new installation. Please enter telegram bot token. WARNING! This will be saved as unencryped text:")
         c["COMMON"]["token"]=token
         proxy_set=input("Set proxy settings?(y/n):")
         proxy_set=proxy_set.lower()
         if proxy_set=="y":
             print("Now you will be asked about proxy settings, which takes 4 steps. If you don't know an answer, press Enter.")
-            print("Only SOCKS 5 proxies are supported. You can change settings later by editing file "+settings_file)
+            print("Only SOCKS 5 proxies are supported. You can change settings later by editing the file "+settings_file)
             proxy_ip=input("(1/4) Enter proxy IP address or domain name:")
             proxy_port=input("(2/4) Enter port:")
             proxy_user=input("(3/4) Enter username (Enter if none):")
@@ -103,37 +117,40 @@ def load():
     file_list=os.listdir(chats_folder)
     id=0
     for file in file_list:
-        if file==default_file or file==ignore_file:
+        if file.startswith(default_file_prefix) or file.startswith(ignore_file_prefix):
             continue
         try:
             id=int(file[:-4])
             load_chat_settings(id)
             print(f"chat loaded: {id}")
-        except:#что-то не так с именем файла
+        except:#something is wrong with name
             print("error with file name while loading chat:"+file)
             continue
     
 
 
-def load_chat_settings(id):
+def load_chat_settings(id,stop_recursion=False):
     global chats
-    if id in chats.keys():
-        return
+    if id in chats.keys() and len(chats[id].keys())>0:
+        return None
     chats[id]=dict()
-    filename=chats_folder+str(id)+".ini"
+    filename=chats_folder+str(id)+ini_suffix
     c=configparser.ConfigParser()
     try:
         c.read(filename,encoding="utf-8")
     except:
         c.read(filename,encoding="utf-8-sig")
-    if "COMMON" not in c:#файл отсутствует или битый. увы, функция не выбрасывает исключения...
+    if "COMMON" not in c:#file is absent or incorrect. please note that c.read don't make exceptions when file is absent
+        if stop_recursion:
+            print("ERROR, incorrect chat file. Please check: "+filename)
+            return None
         print("creating new chat ini-file")
         if new_chats_allowed:
-            shutil.copyfile(chats_folder+"default.ini",filename)
-            c.read(filename,encoding="utf-8")
+            shutil.copyfile(chats_folder+default_file_prefix+language+ini_suffix,filename)
+            return load_chat_settings(id,stop_recursion=True)
         else:
-            shutil.copyfile(chats_folder+"ignore.ini",filename)
-            c.read(filename,encoding="utf-8")
+            shutil.copyfile(chats_folder+ignore_file_prefix+language+ini_suffix,filename)
+            return load_chat_settings(id,stop_recursion=True)
     chats[id]["MSG"]=dict()
     for m in c["MESSAGES"]:
         chats[id]["MSG"][m]=c["MESSAGES"][m]
@@ -158,6 +175,7 @@ def load_chat_settings(id):
     chats[id]["reactions_max"]=int(c["COMMON"]["reactions_max"])
     chats[id]["reactions_warning"]=int(c["COMMON"]["reactions_warning"])
     chats[id]["reactions_final_warning"]=int(c["COMMON"]["reactions_final_warning"])
+    return None
 
 def get_proxies():
     url="socks5://"

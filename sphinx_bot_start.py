@@ -454,10 +454,14 @@ def check_new_member(date,chat_id,res,c_s):
                 print("Current mute limit is greater than new member mute limit, so limit will not be decreased. Skipping...")
         else:#разбан
             if status=="member":
+                status_old=status=cm["old_chat_member"]["status"]
                 message=c_s["MSG"]["unban"]
                 message=message.replace("#N",name).replace("\\n","\n")
-                print(message)
-                send_text(chat_id,message)
+                if status_old=="restricted" and len(name)>0:#can be also "administrator" or "owner". this must be ignored
+                    print(message)
+                    send_text(chat_id,message)
+                else:
+                    send_text(s.owner_id,"strange unban: "+message+"; id:"+str(cm["old_chat_member"]["user"]["id"]))
             else:
                 pass#кого-то забанили или он получил новые ограничения. не будем выводить сообщений
     return
@@ -479,7 +483,7 @@ if __name__=="__main__":
         update_list=[]
         res=dict()
         timeout=5#default
-        if len(queue_member)>0:
+        if len(queue_member)>0 or len(queue_msg)>0:
             timeout=s.poll_pause#if we have non-empty queue, don't wait full timeout. we have to manage the queue
         else:
             timeout=s.poll_wait_timeout
