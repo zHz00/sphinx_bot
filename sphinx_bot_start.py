@@ -354,7 +354,7 @@ def react_to_private_commands(chat_id,res):
         return True
     return False
 
-def check_reactions_from_restricted(chat_id,res):
+def check_reactions_from_restricted(chat_id,res,c_s):
     global reactions_from_restricted
     if "user" not in res["message_reaction"]:#anonymous reaction
         return
@@ -375,7 +375,8 @@ def check_reactions_from_restricted(chat_id,res):
             if reaction_count==0:
                 return#reaction removed, don't increase counter
             index=str(chat_id)+"|"+str(uid)
-            id_link="#[профиль#]#(tg://user?id="+str(uid)+"#)"
+            profile=c_s["MSG"]["profile"]
+            id_link=f"#[{profile}#]#(tg://user?id="+str(uid)+"#)"
             if index not in reactions_from_restricted:
                 reactions_from_restricted[index]=1
             else:
@@ -384,16 +385,16 @@ def check_reactions_from_restricted(chat_id,res):
             print(f"reaction made from restricted user: {uid}, N={n_reactions}")
             if int(s.chats[chat_id]["reactions_max"])==0:
                 return
-            if n_reactions>int(s.chats[chat_id]["reactions_max"]):
+            if n_reactions>int(c_s["reactions_max"]):
                 ban(chat_id,uid,0)
-                send_text(chat_id,s.chats[chat_id]["MSG"]["ban"].replace("#N",name).replace("#I",id_link).replace("\\n","\n"))
+                send_text(chat_id,c_s["MSG"]["ban"].replace("#N",name).replace("#I",id_link).replace("\\n","\n"))
                 reactions_from_restricted[index]=0
                 return
-            if n_reactions==int(s.chats[chat_id]["reactions_final_warning"]):
-                send_text(chat_id,s.chats[chat_id]["MSG"]["reactions_final_warning"].replace("#N",name).replace("#I",id_link).replace("\\n","\n"))
+            if n_reactions==int(c_s["reactions_final_warning"]):
+                send_text(chat_id,c_s["MSG"]["reactions_final_warning"].replace("#N",name).replace("#I",id_link).replace("\\n","\n"))
                 return
-            if n_reactions==int(s.chats[chat_id]["reactions_warning"]):
-                send_text(chat_id,s.chats[chat_id]["MSG"]["reactions_warning"].replace("#N",name).replace("#I",id_link).replace("\\n","\n"))
+            if n_reactions==int(c_s["reactions_warning"]):
+                send_text(chat_id,c_s["MSG"]["reactions_warning"].replace("#N",name).replace("#I",id_link).replace("\\n","\n"))
                 return
     return
 
@@ -418,7 +419,8 @@ def check_new_member(date,chat_id,res,c_s):
         #name=name.encode("unicode-escape").decode()
         if uid==uid_from:#настоящий вход
             message=c_s["MSG"]["hello"]
-            id_link="#[профиль#]#(tg://user?id="+str(uid)+"#)"
+            profile=c_s["MSG"]["profile"]
+            id_link=f"#[{profile}#]#(tg://user?id="+str(uid)+"#)"
             message=message.replace("#N",name).replace("#I",id_link).replace("\\n","\n")
             print(message)
             res=send_text(chat_id,message)
@@ -567,12 +569,6 @@ if __name__=="__main__":
                 make_question(chat_id,res)
                 continue
         
-            if "message_reaction" in res:
-                date=res["message_reaction"]["date"]
-                chat_id=res["message_reaction"]["chat"]["id"]
-                check_reactions_from_restricted(chat_id,res)
-                    
-
             #остались группы и супергруппы (а может и ещё что, т.к. по документации это непонятно)
             c_s=dict()
             if chat_id not in s.chats:
@@ -582,6 +578,11 @@ if __name__=="__main__":
             if c_s["ignore"]==True:
                 print(f"ignoring message from chat {chat_id}")
                 continue#чат не входит в число обслуживаемых. личка не считается
+
+            if "message_reaction" in res:
+                date=res["message_reaction"]["date"]
+                chat_id=res["message_reaction"]["chat"]["id"]
+                check_reactions_from_restricted(chat_id,res,c_s)
 
             if "chat_member" in res:
                 check_new_member(date,chat_id,res,c_s)
