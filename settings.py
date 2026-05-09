@@ -17,9 +17,12 @@ answer_retry_time=30
 language="en"
 
 chats_folder="chats/"
+settings_folder="settings/"
 default_file_prefix="default_"
 ignore_file_prefix="ignore_"
-log_readable="message_log_readable.txt"
+log_folder="logs/"
+log_readable=log_folder+"message_log_readable.txt"
+log_raw=log_folder+"message_log.txt"
 settings_file="settings_global.ini"
 settings_file_default_prefix="settings_global_default_"
 ini_suffix=".ini"
@@ -45,7 +48,7 @@ def load():
     global answer_retry_time
     global language
 
-    if os.path.isfile(settings_file)==False:
+    if os.path.isfile(settings_folder+settings_file)==False:
         #new installation
         langs=[]
         files=os.listdir(".")
@@ -57,14 +60,14 @@ def load():
         lang="/"
         while lang not in langs:
             lang=input("Enter language code:")
-        shutil.copy(settings_file_default_prefix+lang+ini_suffix,settings_file)
+        shutil.copy(settings_folder+settings_file_default_prefix+lang+ini_suffix,settings_folder+settings_file)
 
 
     c=configparser.ConfigParser()
     try:
-        c.read(settings_file,encoding="utf-8")
+        c.read(settings_folder+settings_file,encoding="utf-8")
     except:
-        c.read(settings_file,encoding="utf-8-sig")
+        c.read(settings_folder+settings_file,encoding="utf-8-sig")
     new_chats_allowed=bool(c["COMMON"]["new_chats_allowed"])
     poll_pause=int(c["COMMON"]["poll_pause"])
     poll_wait_timeout=int(c["COMMON"]["poll_wait_timeout"])
@@ -79,7 +82,7 @@ def load():
     except:
         owner_id=int(input("It seems that you have new installation. Please enter bot owner id or zero to skip:"))
         c["COMMON"]["owner_id"]=str(owner_id)
-        f=open(settings_file,"w",encoding="utf-8")
+        f=open(settings_folder+settings_file,"w",encoding="utf-8")
         c.write(f)
         f.close()
         print("Written to file.")
@@ -92,7 +95,7 @@ def load():
         proxy_set=proxy_set.lower()
         if proxy_set=="y":
             print("Now you will be asked about proxy settings, which takes 4 steps. If you don't know an answer, press Enter.")
-            print("Only SOCKS 5 proxies are supported. You can change settings later by editing the file "+settings_file)
+            print("Only SOCKS 5 proxies are supported. You can change settings later by editing the file "+settings_folder+settings_file)
             proxy_ip=input("(1/4) Enter proxy IP address or domain name:")
             proxy_port=input("(2/4) Enter port:")
             proxy_user=input("(3/4) Enter username (Enter if none):")
@@ -101,7 +104,7 @@ def load():
             c["PROXY"]["port"]=proxy_port
             c["PROXY"]["user"]=proxy_user
             c["PROXY"]["pass"]=proxy_pass
-        f=open(settings_file,"w",encoding="utf-8")
+        f=open(settings_folder+settings_file,"w",encoding="utf-8")
         c.write(f)
         f.close()
         print("Written to file.")
@@ -163,13 +166,14 @@ def load_chat_settings(id,stop_recursion=False):
         if q_type not in ["Q","A"]:
             raise ValueError("Only Q## and A## values allowed in QUESTIONS section")
         if q_type=="Q":
-            chats[id][q_type][q_id]=c["QUESTIONS"][m]#вопросы и ответы идут в разные секции но под одинаковым индексом
+            chats[id][q_type][q_id]=c["QUESTIONS"][m]#questions and answers are loaded into two separate sections with same index
         if q_type=="A":
             answers=c["QUESTIONS"][m].replace("ё","е").replace("Ё","Е").lower()
             answers=answers.split("|")
             chats[id][q_type][q_id]=answers
             
-            q_id+=1#это сделано чтобы можно было нумеровать вопросы не подряд и не следить за нумерацией. главное чтобы номера не повторялись
+            q_id+=1#auto-numbering during load: you can number questions as you like, just watch out! 
+            #numbers must be equal for question and answer, and now same numbers for different questions are allowed
     chats[id]["ignore"]=bool(int(c["COMMON"]["ignore"]))
     chats[id]["mute_timer"]=int(c["COMMON"]["mute_timer"])
     chats[id]["reactions_max"]=int(c["COMMON"]["reactions_max"])

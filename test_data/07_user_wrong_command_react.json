@@ -1,0 +1,4 @@
+[
+{},
+{"chat_id": 148756456, "text": "Неизвестная команда\\. Воспользуйтесь кнопками\\.", "parse_mode": "MarkdownV2", "disable_web_page_preview": "False", "reply_markup": "{\"keyboard\":[[{\"text\":\"Статус\"},{\"text\":\"Я не бот\"}]],\"resize_keyboard\":true,\"one_time_keyboard\":true}"}
+]

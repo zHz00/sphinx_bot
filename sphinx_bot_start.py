@@ -1,48 +1,30 @@
 import time
-import json
 import datetime
 import random
 import os
 
 import settings as s
+import make_log as l
 from tg_lib import *
 
-rare_types=["animation",
-    "audio",
-    "document",
-    "photo",
-    "sticker",
-    "story",
-    "video",
-    "video_note",
-    "voice",
-    "checklist",
-    "contact",
-    "dice",
-    "game",
-    "poll",
-    "venue",
-    "location",
-    "invoice",
-    "successful_payment",
-    "refunded_payment",
-    "giveaway",
-    "new_chat_members",
-    "left_chat_member",
-    "new_chat_title",
-    "new_chat_photo"
-    ]
+def reset_queues():
+    global to_delete_chat_id,to_delete_id,to_delete_date
+    global failed_tries_chat_id,failed_tries_date
+    global active_q,active_q_group
+    global reactions_from_restricted
 
-to_delete_chat_id=[]
-to_delete_id=[]
-to_delete_date=[]
+    to_delete_chat_id=[]
+    to_delete_id=[]
+    to_delete_date=[]
 
-failed_tries_chat_id=[]
-failed_tries_date=[]
-active_q=dict()
-active_q_group=dict()
+    failed_tries_chat_id=[]
+    failed_tries_date=[]
+    active_q=dict()
+    active_q_group=dict()
 
-reactions_from_restricted=dict()
+    reactions_from_restricted=dict()
+
+reset_queues()#to create global variables
 
 def process_timeout_wrong_answer():
     global failed_tries_chat_id,failed_tries_date
@@ -61,28 +43,32 @@ def process_timeout_greeting():
         m_id=to_delete_id[i]
         m_date=to_delete_date[i]
         dif=int(datetime.datetime.now().timestamp())-m_date
-        if dif>s.auto_delete_time:#1 час
+        if dif>s.auto_delete_time:#1 hour by default
             res=delete_message(m_chat_id,m_id)
-            print(res.content.decode("unicode-escape",errors='replace'))
-            s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
-            j=fix_JSON(s_tmp)
-            if "ok" in j:
-                if j["ok"]==True:
-                    print(f"message deleted. id={m_id},date={m_date}")
-                    to_delete_chat_id.pop(i)
-                    to_delete_id.pop(i)
-                    to_delete_date.pop(i)
-                    #мы не хотим проблем с изменённым в цикле списке, поэтому после изменения сразу прекращаем. следующее сообщение, если оно есть, удалим в следующий раз
-                    break
-                else:
-                    print(f"message NOT deleted, [ok]==false. id={m_id},date={m_date}")
-                    to_delete_chat_id.pop(i)
-                    to_delete_id.pop(i)
-                    to_delete_date.pop(i)
-                    #if ok==false then no such message exists. removing from list
-                    break
+            if hasattr(res,"content")==False:
+                print(f"message NOT deleted, [content] section absent. id={m_id},date={m_date}")
             else:
-                print(f"message NOT deleted, [ok] section absent. id={m_id},date={m_date}")
+                print(res.content.decode("unicode-escape",errors='replace'))
+                s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
+                j=fix_JSON(s_tmp)
+                if "ok" in j:
+                    if j["ok"]==True:
+                        print(f"message deleted. id={m_id},date={m_date}")
+                        to_delete_chat_id.pop(i)
+                        to_delete_id.pop(i)
+                        to_delete_date.pop(i)
+                        #we are modifying a list in a loop, controlled by that list. this is very bad thing, and we can get into trouble if we continue.
+                        #so we just end a loop. if there are any other messages that must be deleted, this is fine. we'll delete them next time.
+                        break
+                    else:
+                        print(f"message NOT deleted, [ok]==false. id={m_id},date={m_date}")
+                        to_delete_chat_id.pop(i)
+                        to_delete_id.pop(i)
+                        to_delete_date.pop(i)
+                        #if ok==false then no such message exists. removing from list. additionally see previous comment about break
+                        break
+                else:
+                    print(f"message NOT deleted, [ok] section absent. id={m_id},date={m_date}")
     return
 
 
@@ -137,6 +123,9 @@ def show_chat_list_numbered(chat_id):
     n=1
     for group_chat_id in s.chats.keys():
         res2=get_chat(group_chat_id)
+        if hasattr(res2,"content")==False:
+            print("error while getting chat!")
+            continue
         s_tmp=res2.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
         j=fix_JSON(s_tmp)
         print(s_tmp.encode("utf-8",errors="replace").decode())
@@ -145,6 +134,9 @@ def show_chat_list_numbered(chat_id):
         else:
             title=f"<NO TITLE> (id: {group_chat_id})"
         res=get_chat_member(group_chat_id,chat_id)
+        if hasattr(res,"content")==False:
+            print("error while getting chat member!")
+            continue
         print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
         s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
         j=fix_JSON(s_tmp)
@@ -172,6 +164,9 @@ def show_chat_list_buttons(chat_id):
     n=1
     for group_chat_id in s.chats.keys():
         res=get_chat(group_chat_id)
+        if hasattr(res,"content")==False:
+            print("error while getting chat!")
+            continue
         print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
         s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
         j=fix_JSON(s_tmp)
@@ -180,6 +175,9 @@ def show_chat_list_buttons(chat_id):
         else:
             title=f"<NO TITLE> ({group_chat_id})"
         res=get_chat_member(group_chat_id,chat_id)
+        if hasattr(res,"content")==False:
+            print("error while getting chat member!")
+            continue
         print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
         s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
         j=fix_JSON(s_tmp)
@@ -206,59 +204,6 @@ def notify_unknown_command(chat_id):
     reply=make_starting_keyboard()
     send_text(chat_id,s.messages["unknown"].replace("\\n","\n"),reply=reply)
 
-def make_log_record_raw(date_s,res):
-    t=open("messages_log.txt","a",encoding="utf-8",errors="replace")
-    t.write(date_s+": ")
-    txt=json.dumps(res,ensure_ascii=False)
-    json.dump(res,t,ensure_ascii=False)
-    #t.write(txt)
-    t.write("\n")
-    t.close()
-    return
-
-def make_log_record_readable(date_s,chat_id,res):
-    t=open(s.log_readable,"a",encoding="utf-8",errors="replace")
-    try:
-        if "message" in res:
-            m=res["message"]
-            type=m["chat"]["type"]
-            from_u=m["from"]["first_name"]
-            text=None
-            if "text" in m:
-                text=m["text"]
-            for rt in rare_types:
-                if rt in m:
-                    text="["+rt+"]"
-            if text is None:
-                text="[Unknown message type]"
-            t.write(f"{date_s}: [{chat_id} ({type})][{from_u}]:{text}\n")
-        if "callback_query" in res:
-            m=res["callback_query"]
-            c_id=res["callback_query"]["id"]
-            from_u=m["from"]["first_name"]
-            data=res["callback_query"]["data"]
-            t.write(f"{date_s}: [{chat_id}][{from_u}]:callback, id={c_id},data={data}\n")
-        if "chat_member" in res:
-            cm=res["chat_member"]
-            user=cm["new_chat_member"]["user"]
-            from_u=user["first_name"]
-            status=cm["new_chat_member"]["status"]
-            t.write(f"{date_s}: [{chat_id}][{from_u}]:chat_member, new_status={status}\n")
-        if "message_reaction" in res:
-            date=res["message_reaction"]["date"]
-            chat_id=res["message_reaction"]["chat"]["id"]
-            from_u="---"
-            if "user"in res["message_reaction"]:
-                user=res["message_reaction"]["user"]
-                from_u=user["first_name"]
-            else:
-                from_u="Unkonwn user"
-            t.write(f"{date_s}: [{chat_id}][{from_u}]:reaction\n")
-
-    except Exception as e:
-        t.write(f"{date_s}: Exception: {str(e)}\n")
-    t.close()
-    return
 
 #page=0: last page
 #page=1: previous page
@@ -321,6 +266,7 @@ def react_to_private_commands(chat_id,res):
         #send_text(chat_id,"\u0421\u0432\u0435\u0442\u043b\u0430\u043d\u0430 \u041c\u0438\u0449\u0435\u043d\u043a\u043e")
         #send_text(chat_id,"testing markdown (v2), this is link exapmle: #[link1#]#(https://example.com/#)")
         send_text(chat_id,"testing markdown (v2), this is link exapmle: #[link1#]#(https://example.com/#), #[link2#]#(tg://user?id=8365073499#)")
+        #this user id deleted long time ago. so we check if he will get a clickable link (not, he'll not)
         return True
     if "text" in res["message"] and res["message"]["text"].startswith("profile"):
         param_list=res["message"]["text"].split(" ")
@@ -367,6 +313,9 @@ def check_reactions_from_restricted(chat_id,res,c_s):
     if "username" in user:
         name+=" ("+user["username"]+")"
     res=get_chat_member(chat_id,uid)
+    if hasattr(res,"content")==False:
+        print("error while getting chat member!")
+        return
     print(res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
     s_tmp=res.content.replace(b'\\"',b"*").decode("unicode-escape",errors='replace')
     j=fix_JSON(s_tmp)
@@ -407,7 +356,8 @@ def check_new_member(date,chat_id,res,c_s):
     if status=="restricted":
         is_member=cm["new_chat_member"]["is_member"]
         print(f"is_member:{is_member}")
-    if status=="member" or (status=="restricted" and is_member):#второе -- зашёл уже замьюченный пользователь. продлеваем мьют
+    if status=="member" or (status=="restricted" and is_member):#"is_member" means that new member already muted during previous join, and the mute is not expired
+        #in this case, we set new mute timer effectively increasing mute time
         print("new member!")
         uid=user["id"]
         uid_from=cm["from"]["id"]
@@ -451,10 +401,13 @@ def check_new_member(date,chat_id,res,c_s):
                     actual_mute=False
             if actual_mute:
                 res=restrict(chat_id,int(uid),int(date)+c_s["mute_timer"])#7 дней
-                print("restricted: "+res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
+                if hasattr(res,"content")==True:
+                    print("restricted: "+res.content.decode("unicode-escape",errors='replace').encode("utf-8",errors="replace").decode())
+                else:
+                    print("error while restricting!")
             else:
                 print("Current mute limit is greater than new member mute limit, so limit will not be decreased. Skipping...")
-        else:#разбан
+        else:#remove restricion. this is called "unban" which is incorrect. user never was banned, only muted.
             if status=="member":
                 status_old=status=cm["old_chat_member"]["status"]
                 message=c_s["MSG"]["unban"]
@@ -465,13 +418,100 @@ def check_new_member(date,chat_id,res,c_s):
                 else:
                     send_text(s.owner_id,"strange unban: "+message+"; id:"+str(cm["old_chat_member"]["user"]["id"]))
             else:
-                pass#кого-то забанили или он получил новые ограничения. не будем выводить сообщений
+                pass#this section triggers when someone get banned by real admins or someone got restricted. so we don't need to show any messegas
     return
+
+def update_handler(res):
+    date=1
+    chat_id=0
+    if "message" in res:
+        date=res["message"]["date"]
+        chat_id=res["message"]["chat"]["id"]
+    if "message_reaction" in res:
+        date=res["message_reaction"]["date"]
+        chat_id=res["message_reaction"]["chat"]["id"]
+        print("old:"+str(res["message_reaction"]["old_reaction"]))
+        print("new:"+str(res["message_reaction"]["new_reaction"]))
+        if len(res["message_reaction"]["old_reaction"])==0:
+            print("reaction set")
+        if len(res["message_reaction"]["new_reaction"])==0:
+            print("reaction removed")
+
+    if "chat_member" in res:
+        date=res["chat_member"]["date"]
+        chat_id=res["chat_member"]["chat"]["id"]
+    if "callback_query" in res:
+        date=res["callback_query"]["message"]["date"]
+        chat_id=res["callback_query"]["from"]["id"]
+
+    date_s=datetime.datetime.fromtimestamp(date).strftime("%Y-%m-%dT%H:%M:%S")#ftime.strftime("%B %d %Y", str(date))
+    print(f"update_id={id}, {date_s}")
+    l.make_log_record_raw(date_s,res)
+    l.make_log_record_readable(date_s,chat_id,res)
+
+    if "message" in res and res["message"]["chat"]["type"]!="private":#public commands
+        if "text" not in res["message"]:
+            return
+        reacted=react_to_public_commands(chat_id,res)
+        if reacted:
+            return
+
+    if "message" in res and res["message"]["chat"]["type"]=="private":
+        if "text" not in res["message"]:
+            return
+        if chat_id in active_q:#мы задали вопрос
+            check_answer(chat_id,res)
+            return
+        reacted=react_to_private_commands(chat_id,res)
+        if reacted:
+            return
+        #here is processing of private commands except callback buttons
+        if res["message"]["text"]=="/start":
+            greeting(chat_id)
+            return
+        if res["message"]["text"]==s.messages["check_button"]:
+            show_chat_list_numbered(chat_id)
+            return
+        if res["message"]["text"]==s.messages["unmute_button"]:
+            show_chat_list_buttons(chat_id)
+            return
+        if True:#все остальные сообщения
+            notify_unknown_command(chat_id)
+            return
+
+        
+        return#nothing left to check
+
+    if "callback_query" in res:
+        make_question(chat_id,res)
+        return
+
+    #reacting to groups and supergroups and maybe something other
+    c_s=dict()
+    if chat_id not in s.chats:
+        s.load_chat_settings(chat_id)
+        #if this is first message in new chat, then settings file don't exist and we must load defaults
+    c_s=s.chats[chat_id]
+    if c_s["ignore"]==True:
+        print(f"ignoring message from chat {chat_id}")
+        return#public chat not in service, so ignore all messages
+        #by default, this bot accepts all new chats and begin operating with default settings. but this can be a problem, if someone begins
+        #to add your bot to unknown chats. if you set new_chats_allowed = 0 in settings_global.ini, then all new chats will get default settings
+        #with "ignore" variable set to 1. you can manually enable chats later.
+
+    if "message_reaction" in res:
+        date=res["message_reaction"]["date"]
+        chat_id=res["message_reaction"]["chat"]["id"]
+        check_reactions_from_restricted(chat_id,res,c_s)
+
+    if "chat_member" in res:
+        check_new_member(date,chat_id,res,c_s)
 
 
 if __name__=="__main__":
     s.load()
     init(s.token)
+    reset_queues()
     id=-1
     sent_counter=3
     queue_msg=[]
@@ -505,86 +545,6 @@ if __name__=="__main__":
             if len(queue_msg)>0:
                 res=queue_msg.pop(0)
         if len(res)>0:
-            date=1
-            chat_id=0
-            if "message" in res:
-                date=res["message"]["date"]
-                chat_id=res["message"]["chat"]["id"]
-            if "message_reaction" in res:
-                date=res["message_reaction"]["date"]
-                chat_id=res["message_reaction"]["chat"]["id"]
-                print("old:"+str(res["message_reaction"]["old_reaction"]))
-                print("new:"+str(res["message_reaction"]["new_reaction"]))
-                if len(res["message_reaction"]["old_reaction"])==0:
-                    print("reaction set")
-                if len(res["message_reaction"]["new_reaction"])==0:
-                    print("reaction removed")
-
-            if "chat_member" in res:
-                date=res["chat_member"]["date"]
-                chat_id=res["chat_member"]["chat"]["id"]
-            if "callback_query" in res:
-                date=res["callback_query"]["message"]["date"]
-                chat_id=res["callback_query"]["from"]["id"]
-
-            date_s=datetime.datetime.fromtimestamp(date).strftime("%Y-%m-%dT%H:%M:%S")#ftime.strftime("%B %d %Y", str(date))
-            print(f"update_id={id}, {date_s}")
-            make_log_record_raw(date_s,res)
-            make_log_record_readable(date_s,chat_id,res)
-
-            if "message" in res and res["message"]["chat"]["type"]!="private":#public commands
-                if "text" not in res["message"]:
-                    continue
-                reacted=react_to_public_commands(chat_id,res)
-                if reacted:
-                    continue
-
-            if "message" in res and res["message"]["chat"]["type"]=="private":
-                if "text" not in res["message"]:
-                    continue
-                if chat_id in active_q:#мы задали вопрос
-                    check_answer(chat_id,res)
-                    continue
-                reacted=react_to_private_commands(chat_id,res)
-                if reacted:
-                    continue
-                #тут будет вся обработка лички (кроме коллбека)
-                if res["message"]["text"]=="/start":
-                    greeting(chat_id)
-                    continue
-                if res["message"]["text"]==s.messages["check_button"]:
-                    show_chat_list_numbered(chat_id)
-                    continue
-                if res["message"]["text"]==s.messages["unmute_button"]:
-                    show_chat_list_buttons(chat_id)
-                    continue
-                if True:#все остальные сообщения
-                    notify_unknown_command(chat_id)
-                    continue
-
-                
-                continue#дальнейшая обработка не имеет смысла
-
-            if "callback_query" in res:
-                make_question(chat_id,res)
-                continue
+            update_handler(res)
         
-            #остались группы и супергруппы (а может и ещё что, т.к. по документации это непонятно)
-            c_s=dict()
-            if chat_id not in s.chats:
-                s.load_chat_settings(chat_id)
-                #это может быть первый вход в новый чат, тогда настроечного файла ещё не существует и нужно взять по-умолчанию
-            c_s=s.chats[chat_id]
-            if c_s["ignore"]==True:
-                print(f"ignoring message from chat {chat_id}")
-                continue#чат не входит в число обслуживаемых. личка не считается
-
-            if "message_reaction" in res:
-                date=res["message_reaction"]["date"]
-                chat_id=res["message_reaction"]["chat"]["id"]
-                check_reactions_from_restricted(chat_id,res,c_s)
-
-            if "chat_member" in res:
-                check_new_member(date,chat_id,res,c_s)
-        
-        continue#конец цикла
+        continue#end of main infinite loop

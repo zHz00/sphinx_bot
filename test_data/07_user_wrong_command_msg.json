@@ -1,0 +1,4 @@
+[
+{"update_id": 744473541, "message": {"message_id": 1762, "from": {"id": 148756456, "is_bot": false, "first_name": "zHz", "username": "zHz01", "language_code": "en"}, "chat": {"id": 148756456, "first_name": "zHz", "username": "zHz01", "type": "private"}, "date": 1777761884, "text": "я человек"}},
+{"ok":true,"result":{"message_id":1763,"from":{"id":1369000022,"is_bot":true,"first_name":"\\u0413\\u0440\\u0430\\u0432\\u0438\\u0442\\u0430\\u0446\\u0438\\u043e\\u043d\\u043d\\u0430\\u044f \\u042f\\u043c\\u0430","username":"zHz_RSS3_bot"},"chat":{"id":148756456,"first_name":"zHz","username":"zHz01","type":"private"},"date":1777761884,"text":"\\u041d\\u0435\\u0438\\u0437\\u0432\\u0435\\u0441\\u0442\\u043d\\u0430\\u044f \\u043a\\u043e\\u043c\\u0430\\u043d\\u0434\\u0430. \\u0412\\u043e\\u0441\\u043f\\u043e\\u043b\\u044c\\u0437\\u0443\\u0439\\u0442\\u0435\\u0441\\u044c \\u043a\\u043d\\u043e\\u043f\\u043a\\u0430\\u043c\\u0438."}}
+]

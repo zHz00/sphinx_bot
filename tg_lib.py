@@ -1,8 +1,13 @@
 import requests
 import json
 import time
-import settings as s
 import datetime
+from urllib.parse import urlencode
+
+
+import settings as s
+import make_log as l
+
 
 
 __token=""
@@ -26,20 +31,23 @@ def send_file(chat_id,caption,file,tries=3):
         if tries>0:
             return send_file(chat_id,caption,file,tries-1)
         else:
-            return []
-
+            return dict()
+    date_s=datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    l.make_log_record_raw(date_s,data)
+    l.make_log_record_raw(date_s,res.text)
     return res
 
 def send_text(chat_id,text,reply="",preview=True,tries=3):
     forbidden=[ '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
     #forbidden=[ '_', '*', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-    allowed=["\\#\\(","\\#\\)","\\#\\[","\\#\\]"]#те символы, которые не надо было заменять
+    allowed=["\\#\\(","\\#\\)","\\#\\[","\\#\\]"]#workaround for characters that must be left unmodified
+    #this combinations are markdown syntax, so modifying it leads to non-working markup
     for ch in forbidden:
         text=text.replace(ch,"\\"+ch)
     for ch in allowed:
         text=text.replace(ch,ch[-1])
     if preview==True:
-        disable_preview_text="False"#потому что дизейбл
+        disable_preview_text="False" #preview==Ture=>disable==False
     else:
         disable_preview_text="True"
     data = {"chat_id": chat_id, "text": text,"parse_mode":"MarkdownV2","disable_web_page_preview":disable_preview_text}
@@ -49,9 +57,8 @@ def send_text(chat_id,text,reply="",preview=True,tries=3):
     #print("url:"+url)
     #print("text:"+text)
     date_s=datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-    t=open("message_log_readable.txt","a",encoding="utf-8",errors="replace")
-    t.write(f"{date_s}: Sending text:{chat_id},{text}\nreply=[{reply}]\n")
-    t.close()
+    l.make_log_record_readable_str(date_s,f"Sending text:{chat_id},{text}\nreply=[{reply}]\n")
+    l.make_log_record_raw(date_s,data)
     try:
         res=requests.post(url,data=data,proxies=s.get_proxies())
     except:
@@ -60,7 +67,8 @@ def send_text(chat_id,text,reply="",preview=True,tries=3):
         if tries>0:
             return send_text(chat_id,text,reply,preview,tries-1)
         else:
-            return []
+            return dict()
+    l.make_log_record_raw(date_s,res.text)
     return res
 
 def fix_JSON(json_message=None):
@@ -69,7 +77,7 @@ def fix_JSON(json_message=None):
         result = json.loads(json_message,strict=False)
     except Exception as e:      
         # Find the offending character index:
-        idx_to_replace = int(str(e).split(' ')[-1].replace(')', ''))        
+        idx_to_replace = int(str(e).split(' ')[-1].replace(')', ''))
         print(str(e))
         print("\n=====\n")
         try:
@@ -135,13 +143,17 @@ def get_chat(chat_id,tries=3):
     #print("text:"+text)
     try:
         res=requests.post(url,data=data,proxies=s.get_proxies())
-    except:
-        print("error with request (get_chat). pause")
+    except Exception as e:
+        e_str=str(e)
+        print("error with request (get_chat). pause. e="+e_str)
         time.sleep(s.poll_error_pause)
         if tries>0:
             return get_chat(chat_id,tries-1)
         else:
-            return []
+            return dict()
+    date_s=datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    l.make_log_record_raw(date_s,data)
+    l.make_log_record_raw(date_s,res.text)
     return res
 
 def get_chat_member(chat_id,uid,tries=3):
@@ -155,7 +167,10 @@ def get_chat_member(chat_id,uid,tries=3):
         if tries>0:
             return get_chat(chat_id,tries-1)
         else:
-            return []
+            return dict()
+    date_s=datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    l.make_log_record_raw(date_s,data)
+    l.make_log_record_raw(date_s,res.text)
     return res
 
 def ban(chat_id,uid,date,tries=3):
@@ -171,7 +186,10 @@ def ban(chat_id,uid,date,tries=3):
         if tries>0:
             return ban(chat_id,uid,date,tries-1)
         else:
-            return []
+            return dict()
+    date_s=datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    l.make_log_record_raw(date_s,data)
+    l.make_log_record_raw(date_s,res.text)
     return res
 
 
@@ -188,7 +206,10 @@ def restrict(chat_id,uid,date,tries=3):
         if tries>0:
             return restrict(chat_id,uid,date,tries-1)
         else:
-            return []
+            return dict()
+    date_s=datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    l.make_log_record_raw(date_s,data)
+    l.make_log_record_raw(date_s,res.text)
     return res
 
 def unrestrict(chat_id,uid,tries=3):
@@ -204,7 +225,10 @@ def unrestrict(chat_id,uid,tries=3):
         if tries>0:
             return unrestrict(chat_id,uid,tries-1)
         else:
-            return []
+            return dict()
+    date_s=datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    l.make_log_record_raw(date_s,data)
+    l.make_log_record_raw(date_s,res.text)
     return res
 
 def delete_message(chat_id,message_id,tries=3):
@@ -220,7 +244,10 @@ def delete_message(chat_id,message_id,tries=3):
         if tries>0:
             return delete_message(chat_id,message_id,tries-1)
         else:
-            return []
+            return dict()
+    date_s=datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    l.make_log_record_raw(date_s,data)
+    l.make_log_record_raw(date_s,res.text)
     return res
 
 def answer_callback(chat_id,callback_query_id,tries=3):
@@ -236,6 +263,11 @@ def answer_callback(chat_id,callback_query_id,tries=3):
         if tries>0:
             return answer_callback(chat_id,callback_query_id,tries-1)
         else:
-            return []
+            return dict()
+    date_s=datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    l.make_log_record_raw(date_s,data)
+    l.make_log_record_raw(date_s,res.text)
     return res
 
+def temp_func():
+    return requests.post('http://test.com')
